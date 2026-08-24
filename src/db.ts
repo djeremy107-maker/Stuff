@@ -51,6 +51,7 @@ function ensureColumn(table: string, column: string, ddl: string) {
 }
 ensureColumn("characters", "buff_json", "buff_json TEXT NOT NULL DEFAULT ''");
 ensureColumn("characters", "achievements_json", "achievements_json TEXT NOT NULL DEFAULT '[]'");
+ensureColumn("characters", "queue_json", "queue_json TEXT NOT NULL DEFAULT '[]'");
 
 db.exec(`
 
@@ -88,6 +89,7 @@ export interface CharacterRow {
   bait_active: number;
   buff_json: string;
   achievements_json: string;
+  queue_json: string;
   updated_at: number;
 }
 

@@ -16,6 +16,7 @@ const state = {
   bank: {},
   event: null,
   pendingWelcome: false,
+  queueQty: 50, // 0 = infinite
   tab: "fishing", // skill id, or "collection" / "shop" / "bank" / "achievements"
   ws: null,
   anim: { refId: null, durationSec: 1, cycleStart: 0 },
@@ -143,6 +144,7 @@ function onStateUpdate() {
   renderPanel();
   renderInventory();
   updateActionBanner();
+  renderQueueBar();
 }
 function renderTopbar() {
   const p = state.player;
@@ -221,6 +223,23 @@ function skillHeader(panel, skill) {
   panel.appendChild(bar);
 }
 
+// Quantity picker used by the "+ Queue" buttons.
+function queueControls(panel) {
+  const row = el("div", "queue-qty");
+  const opts = [
+    ["10", 10], ["50", 50], ["200", 200], ["1000", 1000], ["∞", 0],
+  ];
+  const label = el("span", "muted", "Queue amount:");
+  row.appendChild(label);
+  for (const [txt, val] of opts) {
+    const b = el("button", "qty-btn" + (state.queueQty === val ? " on" : ""), txt);
+    b.onclick = () => { state.queueQty = val; renderPanel(); };
+    row.appendChild(b);
+  }
+  row.appendChild(el("span", "muted qhint", "· “Start” fishes forever; “+ Queue” lines up this many, then moves on."));
+  panel.appendChild(row);
+}
+
 // ---- Fishing ----
 function renderFishing(panel) {
   const p = state.player;
@@ -246,6 +265,7 @@ function renderFishing(panel) {
   panel.appendChild(controls);
   $("#bait-toggle").onchange = (e) => send({ type: "bait", active: e.target.checked });
 
+  queueControls(panel);
   const cards = el("div", "cards");
   for (const z of state.game.zones) cards.appendChild(zoneCard(z));
   panel.appendChild(cards);
@@ -269,17 +289,37 @@ function zoneCard(z) {
     <div class="c-meta">Requires Fishing ${z.levelReq} · ~${z.baseTimeSec}s/cast · ${z.xpMult}× XP</div>
     <div class="c-io">Catches: <div class="zone-fish">${fishTags}</div></div>
   `;
-  const btn = el("button", "do", active ? "Stop" : locked ? `🔒 Fishing ${z.levelReq}` : "Fish here");
-  btn.disabled = locked;
-  btn.onclick = () => (active ? send({ type: "stop" }) : send({ type: "action", kind: "fish", refId: z.id }));
-  card.appendChild(btn);
+  card.appendChild(cardButtons(active, locked, `🔒 Fishing ${z.levelReq}`, "Fish here", "fish", z.id));
   return card;
+}
+
+// Build the Start / +Queue (or Stop) button row shared by zone & action cards.
+function cardButtons(active, locked, lockedLabel, startLabel, kind, refId) {
+  const wrap = el("div", "card-btns");
+  if (active) {
+    const stop = el("button", "do", "Stop");
+    stop.onclick = () => send({ type: "stop" });
+    wrap.appendChild(stop);
+    return wrap;
+  }
+  const start = el("button", "do", locked ? lockedLabel : startLabel);
+  start.disabled = locked;
+  start.onclick = () => send({ type: "action", kind, refId });
+  wrap.appendChild(start);
+  if (!locked) {
+    const q = state.queueQty;
+    const add = el("button", "do queue-btn", q === 0 ? "+ Queue ∞" : `+ Queue ${q}`);
+    add.onclick = () => send({ type: "queue", kind, refId, target: q });
+    wrap.appendChild(add);
+  }
+  return wrap;
 }
 
 // ---- Foraging / Crafting / Cooking ----
 function renderSkill(panel, skillId) {
   const skill = state.game.skills.find((s) => s.id === skillId);
   skillHeader(panel, skill);
+  queueControls(panel);
   const cards = el("div", "cards");
   for (const a of state.game.actions.filter((x) => x.skill === skillId)) cards.appendChild(actionCard(a, skill));
   panel.appendChild(cards);
@@ -302,10 +342,7 @@ function actionCard(a, skill) {
     ${inIcons}
     <div class="c-io">Makes: ${outIcons}</div>
   `;
-  const btn = el("button", "do", active ? "Stop" : locked ? `🔒 Level ${a.levelReq}` : "Start");
-  btn.disabled = locked;
-  btn.onclick = () => (active ? send({ type: "stop" }) : send({ type: "action", kind: "action", refId: a.id }));
-  card.appendChild(btn);
+  card.appendChild(cardButtons(active, locked, `🔒 Level ${a.levelReq}`, "Start", "action", a.id));
   return card;
 }
 
@@ -460,15 +497,34 @@ function updateActionBanner() {
   } else {
     state.anim.durationSec = a.durationSec;
   }
+  const targetTxt = a.target > 0 ? ` · ${a.done}/${a.target}` : " · ∞";
+  const hasQueue = (state.player.queue || []).length > 0;
   banner.innerHTML = `
     <div>
       <div class="ab-title">${a.icon ? a.icon + " " : ""}${a.name}</div>
-      <div class="ab-sub">${a.type === "fish" ? "🎣 Casting…" : "⏳ Working…"}</div>
+      <div class="ab-sub">${a.type === "fish" ? "🎣 Casting…" : "⏳ Working…"}${targetTxt}</div>
     </div>
     <div class="progress"><span id="ab-fill"></span></div>
-    <button class="stop">Stop</button>
+    ${hasQueue || a.target > 0 ? `<button class="skip" title="Finish this now and move to the next queued task">⏭ Skip</button>` : ""}
+    <button class="stop">Stop all</button>
   `;
   banner.querySelector(".stop").onclick = () => send({ type: "stop" });
+  const skipBtn = banner.querySelector(".skip");
+  if (skipBtn) skipBtn.onclick = () => send({ type: "skip" });
+}
+
+function renderQueueBar() {
+  const bar = $("#queue-bar");
+  const q = state.player?.queue || [];
+  if (!q.length) return void bar.classList.add("hidden");
+  bar.classList.remove("hidden");
+  bar.innerHTML = `<span class="qb-label">Up next:</span>`;
+  q.forEach((entry, i) => {
+    const chip = el("span", "qchip");
+    chip.innerHTML = `${entry.icon} ${entry.name.replace("Fishing — ", "")} <b>${entry.target > 0 ? "×" + entry.target : "∞"}</b> <span class="qx" title="Remove">✕</span>`;
+    chip.querySelector(".qx").onclick = () => send({ type: "dequeue", index: i });
+    bar.appendChild(chip);
+  });
 }
 function animate() {
   const a = state.player?.action;

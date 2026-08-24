@@ -105,7 +105,25 @@ input:focus { outline: none; border-color: var(--accent); }
 #action-banner .ab-sub { color: var(--muted); font-size: .85rem; }
 #action-banner .progress { flex: 1; height: 12px; background: var(--bg); border-radius: 6px; overflow: hidden; border: 1px solid var(--line); }
 #action-banner .progress > span { display: block; height: 100%; background: var(--accent); width: 0; }
-#action-banner .stop { background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 6px 12px; }
+#action-banner .stop, #action-banner .skip { background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 6px 12px; }
+#action-banner .skip { border-color: var(--accent-2); color: var(--accent-2); }
+
+/* ---------- Queue bar ---------- */
+#queue-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; padding: 8px 12px; background: var(--bg-2); border: 1px dashed var(--line); border-radius: var(--radius); }
+#queue-bar .qb-label { color: var(--muted); font-size: .82rem; }
+.qchip { display: inline-flex; align-items: center; gap: 6px; background: var(--bg-3); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; font-size: .82rem; }
+.qchip .qx { cursor: pointer; color: var(--muted); font-weight: 700; padding: 0 2px; }
+.qchip .qx:hover { color: var(--danger); }
+
+/* ---------- Queue amount picker & card buttons ---------- */
+.queue-qty { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+.queue-qty .muted { color: var(--muted); font-size: .82rem; }
+.queue-qty .qhint { flex-basis: 100%; }
+.qty-btn { background: var(--bg-3); border: 1px solid var(--line); color: var(--muted); border-radius: 8px; padding: 4px 10px; font-size: .82rem; }
+.qty-btn.on { color: #0d1512; background: var(--accent); border-color: var(--accent); font-weight: 600; }
+.card-btns { display: flex; gap: 6px; margin-top: auto; }
+.card-btns .do { flex: 1; margin-top: 0; }
+.card-btns .queue-btn { flex: 0 0 auto; background: var(--bg-3); color: var(--accent); border: 1px solid var(--accent); }
 
 /* ---------- Panels ---------- */
 .panel-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 4px; }

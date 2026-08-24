@@ -57,11 +57,18 @@ it incremental depth for two players.
 
 ### The action model
 
-A character has at most one active action: `{ type, refId, startedAt }` where
-`type` is `fish` (refId = zone) or `gather`/`produce` (refId = action).
-`startedAt` marks the current in-progress cast/craft; on each advance we compute
-whole completions, grant rewards, and roll `startedAt` forward by the remainder.
-Production is additionally limited by available inputs.
+A character has one active action plus a queue of pending ones. Each entry is
+`{ type, refId, target }` (`type` = `fish` | `gather` | `produce`; `target` = 0
+means run until stopped / out of materials). The active entry also tracks
+`{ done, progressMs }`.
+
+`processElapsed` distributes the elapsed window with a single per-completion
+loop: for each completion it computes that step's duration at the current
+sim-time (so meal buffs and hotspot events apply exactly), grants the reward,
+and — when an entry reaches its target or a production entry runs out of inputs —
+promotes the next queued entry, carrying leftover time forward. Partial progress
+toward the next completion is stored in `progressMs`. This one loop powers the
+live tick and offline catch-up identically.
 
 ## Roadmap
 
@@ -72,7 +79,10 @@ Production is additionally limited by available inputs.
       and clears mid-window correctly).
 - [x] **Shared bank** — a single shared stash both anglers deposit into and
       withdraw from, broadcast live to both. (Direct gifting/shared coins TBD.)
-- [ ] **Action queue** — line up multiple casts/crafts (MWI-style).
+- [x] **Action queue** — each action carries a target count (0 = infinite); the
+      engine advances through a queue of tasks, distributing the elapsed window
+      across entries per-completion (so buffs/events/offline stay exact) and
+      advancing on target reached or materials exhausted.
 - [ ] **Direct gifting & shared coins** — send items straight to your partner;
       an optional shared coin pool.
 - [x] **Fishing events** — a rotating global hotspot: one zone gets boosted rare

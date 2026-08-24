@@ -13,6 +13,9 @@ import {
   processElapsed,
   serializePlayer,
   startAction,
+  enqueueAction,
+  dequeueAt,
+  skipAction,
   stopAction,
   setBait,
   equipRod,
@@ -177,7 +180,16 @@ wss.on("connection", (ws, req) => {
     }
     switch (msg.type) {
       case "action":
-        withPlayer(userId, (p) => ({ actionResult: startAction(p, msg.kind === "fish" ? "fish" : "action", String(msg.refId)) }));
+        withPlayer(userId, (p) => ({ actionResult: startAction(p, msg.kind === "fish" ? "fish" : "action", String(msg.refId), Number(msg.target ?? 0)) }));
+        break;
+      case "queue":
+        withPlayer(userId, (p) => ({ actionResult: enqueueAction(p, msg.kind === "fish" ? "fish" : "action", String(msg.refId), Number(msg.target ?? 0)) }));
+        break;
+      case "dequeue":
+        withPlayer(userId, (p) => void dequeueAt(p, Number(msg.index)));
+        break;
+      case "skip":
+        withPlayer(userId, (p) => void skipAction(p));
         break;
       case "stop":
         withPlayer(userId, (p) => void stopAction(p));

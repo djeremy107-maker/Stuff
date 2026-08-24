@@ -38,10 +38,15 @@ export function guildInfo() {
 // --------------------------------------------------------------------------
 // Player state
 // --------------------------------------------------------------------------
-export interface ActionState {
+export interface QueueEntry {
   type: "fish" | "gather" | "produce";
   refId: string; // zone id or action id
-  startedAt: number;
+  target: number; // desired completions; 0 = run until stopped / out of materials
+}
+
+export interface ActionState extends QueueEntry {
+  done: number; // completions granted so far this entry
+  progressMs: number; // ms accumulated toward the next completion
 }
 
 export interface BuffState {
@@ -63,18 +68,19 @@ export interface PlayerState {
   buff: BuffState | null;
   achievements: string[];
   action: ActionState | null;
+  queue: QueueEntry[];
   updatedAt: number;
 }
 
 const selectChar = db.prepare<[number]>("SELECT * FROM characters WHERE user_id = ?");
 const upsertChar = db.prepare(`
-  INSERT INTO characters (user_id, name, coins, skills_json, inventory_json, bestiary_json, equipped_json, action_json, bait_active, buff_json, achievements_json, updated_at)
-  VALUES (@user_id, @name, @coins, @skills_json, @inventory_json, @bestiary_json, @equipped_json, @action_json, @bait_active, @buff_json, @achievements_json, @updated_at)
+  INSERT INTO characters (user_id, name, coins, skills_json, inventory_json, bestiary_json, equipped_json, action_json, bait_active, buff_json, achievements_json, queue_json, updated_at)
+  VALUES (@user_id, @name, @coins, @skills_json, @inventory_json, @bestiary_json, @equipped_json, @action_json, @bait_active, @buff_json, @achievements_json, @queue_json, @updated_at)
   ON CONFLICT(user_id) DO UPDATE SET
     coins=@coins, skills_json=@skills_json, inventory_json=@inventory_json,
     bestiary_json=@bestiary_json, equipped_json=@equipped_json,
     action_json=@action_json, bait_active=@bait_active, buff_json=@buff_json,
-    achievements_json=@achievements_json, updated_at=@updated_at
+    achievements_json=@achievements_json, queue_json=@queue_json, updated_at=@updated_at
 `);
 
 export function loadPlayer(userId: number): PlayerState | null {
@@ -91,8 +97,22 @@ export function loadPlayer(userId: number): PlayerState | null {
     baitActive: !!row.bait_active,
     buff: row.buff_json ? JSON.parse(row.buff_json) : null,
     achievements: row.achievements_json ? JSON.parse(row.achievements_json) : [],
-    action: row.action_json ? JSON.parse(row.action_json) : null,
+    action: normalizeAction(row.action_json ? JSON.parse(row.action_json) : null),
+    queue: row.queue_json ? JSON.parse(row.queue_json) : [],
     updatedAt: row.updated_at,
+  };
+}
+
+// Backfill fields for actions saved before the queue existed (old format had
+// only { type, refId, startedAt }).
+function normalizeAction(a: any): ActionState | null {
+  if (!a) return null;
+  return {
+    type: a.type,
+    refId: a.refId,
+    target: typeof a.target === "number" ? a.target : 0,
+    done: typeof a.done === "number" ? a.done : 0,
+    progressMs: typeof a.progressMs === "number" ? a.progressMs : 0,
   };
 }
 
@@ -109,6 +129,7 @@ export function savePlayer(p: PlayerState): void {
     bait_active: p.baitActive ? 1 : 0,
     buff_json: p.buff ? JSON.stringify(p.buff) : "",
     achievements_json: JSON.stringify(p.achievements),
+    queue_json: JSON.stringify(p.queue),
     updated_at: p.updatedAt,
   });
 }
@@ -129,6 +150,7 @@ export function createCharacter(userId: number, name: string): PlayerState {
     buff: null,
     achievements: [],
     action: null,
+    queue: [],
     updatedAt: now,
   };
   savePlayer(p);
@@ -233,135 +255,127 @@ export interface ProgressSummary {
   stopped?: "no_inputs";
 }
 
+// Per-completion duration + rare bonus for a single cast at absolute time `clock`.
+function fishParamsAt(p: PlayerState, zoneId: string, clock: number): { durMs: number; rareBonus: number } {
+  const zone = zonesById.get(zoneId)!;
+  const rod = p.equipped.rod ? gameData.items[p.equipped.rod] : undefined;
+  const base = zone.baseTimeSec * (rod?.rodSpeedMult ?? 1) * (1 - guildSpeedBonus()) * 1000;
+  const event = getActiveEvent();
+  const buffed = p.buff && clock < p.buff.expiresAt;
+  const eventOn = !!event && event.zoneId === zoneId && clock >= event.startsAt && clock < event.endsAt;
+  const durMs = base * (buffed ? p.buff!.speedMult : 1) * (eventOn ? event!.speedMult : 1);
+  const rareBonus = (rod?.rodRareBonus ?? 0) + (buffed ? p.buff!.rareBonus : 0) + (eventOn ? event!.rareBonus : 0);
+  return { durMs, rareBonus };
+}
+
+function hasInputs(p: PlayerState, def: { inputs: { item: string; qty: number }[] }): boolean {
+  return def.inputs.every((inp) => (p.inventory[inp.item] || 0) >= inp.qty);
+}
+
+// The duration of the active entry's current completion (for pct display etc.).
+function currentDurMs(p: PlayerState, clock = Date.now()): number {
+  const a = p.action;
+  if (!a) return 1;
+  if (a.type === "fish") return fishParamsAt(p, a.refId, clock).durMs;
+  const def = actionsById.get(a.refId);
+  return def ? def.durationSec * 1000 : 1;
+}
+
+function promoteNext(p: PlayerState): boolean {
+  const next = p.queue.shift();
+  if (next) {
+    p.action = { ...next, done: 0, progressMs: 0 };
+    return true;
+  }
+  p.action = null;
+  return false;
+}
+
 export function processElapsed(p: PlayerState, now: number): ProgressSummary {
   const summary: ProgressSummary = { completions: 0, xpGained: {}, itemsGained: {}, coinsGained: 0, newSpecies: [], newAchievements: [] };
   const addItemSum = (id: string, q: number) => (summary.itemsGained[id] = (summary.itemsGained[id] || 0) + q);
   const addXpSum = (s: string, x: number) => (summary.xpGained[s] = (summary.xpGained[s] || 0) + x);
 
-  if (!p.action) {
-    if (p.buff && now >= p.buff.expiresAt) p.buff = null;
-    evaluateAchievements(p, summary);
-    p.updatedAt = now;
-    return summary;
-  }
-  const action = p.action;
-  const capped = Math.min(now - action.startedAt, OFFLINE_CAP_MS);
+  // If nothing is active but something is queued, promote it.
+  if (!p.action && p.queue.length) promoteNext(p);
 
-  if (action.type === "fish") {
-    const zone = zonesById.get(action.refId);
-    if (!zone) {
-      p.action = null;
-      p.updatedAt = now;
-      return summary;
-    }
-    const rod = p.equipped.rod ? gameData.items[p.equipped.rod] : undefined;
-    const speedMult = rod?.rodSpeedMult ?? 1;
-    const rodRare = rod?.rodRareBonus ?? 0;
-    const gBonus = guildSpeedBonus();
-    const baseCastMs = zone.baseTimeSec * speedMult * (1 - gBonus) * 1000;
+  let remaining = Math.min(now - p.updatedAt, OFFLINE_CAP_MS);
+  let clock = now - remaining; // absolute time as we distribute the elapsed window
+  let guildCatches = 0;
+  let guard = 0;
 
-    const event = getActiveEvent();
-    const end = action.startedAt + capped; // absolute sim end time
-    let simTime = action.startedAt; // absolute time as we walk forward
-    let guard = 0;
-    let guildCatches = 0;
-    while (guard < SIM_GUARD) {
-      guard++;
-      // Is a meal buff active at this point in (sim) time?
-      const buffed = p.buff && simTime < p.buff.expiresAt;
-      // Is the live hotspot event active here, and is it this zone?
-      const eventOn = !!event && event.zoneId === zone.id && simTime >= event.startsAt && simTime < event.endsAt;
-      const durMs = baseCastMs * (buffed ? p.buff!.speedMult : 1) * (eventOn ? event!.speedMult : 1);
-      if (end - simTime < durMs) break;
-      // Choose (and consume) bait for this cast.
-      let rareBonus = rodRare + (buffed ? p.buff!.rareBonus : 0) + (eventOn ? event!.rareBonus : 0);
+  while (remaining > 0 && p.action && guard < SIM_GUARD) {
+    guard++;
+    const entry = p.action;
+
+    if (entry.type === "fish") {
+      const zone = zonesById.get(entry.refId);
+      if (!zone) { if (!promoteNext(p)) break; continue; }
+      const { durMs, rareBonus: baseRare } = fishParamsAt(p, entry.refId, clock);
+      const need = durMs - entry.progressMs;
+      if (remaining < need) { entry.progressMs += remaining; clock += remaining; remaining = 0; break; }
+
+      // Complete one cast.
+      let rareBonus = baseRare;
       if (p.baitActive) {
         const bait = bestBait(p);
-        if (bait) {
-          removeItem(p, bait.id, 1);
-          rareBonus += bait.bonus;
-        }
+        if (bait) { removeItem(p, bait.id, 1); rareBonus += bait.bonus; }
       }
-      const species = rollSpecies(zone.id, rareBonus);
-      if (!species) break;
-      addItem(p, species, 1);
-      addItemSum(species, 1);
-
-      // Size + bestiary
-      const def = gameData.items[species];
-      const size = def?.sizeMin != null && def?.sizeMax != null
-        ? Math.round((def.sizeMin + Math.random() * (def.sizeMax - def.sizeMin)) * 10) / 10
-        : 0;
-      const rec = p.bestiary[species];
-      if (!rec) {
-        p.bestiary[species] = { count: 1, max: size };
-        summary.newSpecies.push(species);
-      } else {
-        rec.count++;
-        if (size > rec.max) rec.max = size;
+      const species = rollSpecies(entry.refId, rareBonus);
+      if (species) {
+        addItem(p, species, 1);
+        addItemSum(species, 1);
+        const def = gameData.items[species];
+        const size = def?.sizeMin != null && def?.sizeMax != null
+          ? Math.round((def.sizeMin + Math.random() * (def.sizeMax - def.sizeMin)) * 10) / 10
+          : 0;
+        const rec = p.bestiary[species];
+        if (!rec) { p.bestiary[species] = { count: 1, max: size }; summary.newSpecies.push(species); }
+        else { rec.count++; if (size > rec.max) rec.max = size; }
+        if (size > 0 && (!summary.biggest || size > summary.biggest.size)) summary.biggest = { item: species, size };
+        const rarity = def?.rarity ?? "common";
+        const xp = Math.round(gameData.rarityXp[rarity] * zone.xpMult);
+        grantXp(p, "fishing", xp);
+        addXpSum("fishing", xp);
+        guildCatches++;
       }
-      if (size > 0 && (!summary.biggest || size > summary.biggest.size)) summary.biggest = { item: species, size };
-
-      const rarity = def?.rarity ?? "common";
-      const xp = Math.round(gameData.rarityXp[rarity] * zone.xpMult);
-      grantXp(p, "fishing", xp);
-      addXpSum("fishing", xp);
-
-      guildCatches++;
+      entry.done++;
       summary.completions++;
-      simTime += durMs;
+      clock += need; remaining -= need; entry.progressMs = 0;
+      if (entry.target > 0 && entry.done >= entry.target) { if (!promoteNext(p)) break; }
+      continue;
     }
-    if (guildCatches > 0) addGuild.run(guildCatches);
-    const remainder = end - simTime; // partial progress toward the next cast
-    action.startedAt = now - remainder;
-    if (p.buff && now >= p.buff.expiresAt) p.buff = null;
-    evaluateAchievements(p, summary);
-    p.updatedAt = now;
-    return summary;
-  }
 
-  // Foraging / crafting / cooking (gather & produce)
-  const def = actionsById.get(action.refId);
-  if (!def) {
-    p.action = null;
-    p.updatedAt = now;
-    return summary;
-  }
-  const durMs = def.durationSec * 1000;
-  let completions = Math.floor(capped / durMs);
+    // gather / produce
+    const def = actionsById.get(entry.refId);
+    if (!def) { if (!promoteNext(p)) break; continue; }
+    const durMs = def.durationSec * 1000;
+    const need = durMs - entry.progressMs;
 
-  if (completions > 0 && def.inputs.length > 0) {
-    let maxByInputs = Infinity;
-    for (const inp of def.inputs) maxByInputs = Math.min(maxByInputs, Math.floor((p.inventory[inp.item] || 0) / inp.qty));
-    if (maxByInputs < completions) {
-      completions = maxByInputs;
-      summary.stopped = "no_inputs";
+    if (remaining < need) { entry.progressMs += remaining; clock += remaining; remaining = 0; break; }
+
+    if (def.inputs.length && !hasInputs(p, def)) {
+      // Out of materials — move on to the next queued task (or stop).
+      const advanced = promoteNext(p);
+      if (!advanced) { summary.stopped = "no_inputs"; break; }
+      continue; // note: time not consumed; next entry starts fresh
     }
-  }
 
-  if (completions > 0) {
-    for (const inp of def.inputs) removeItem(p, inp.item, inp.qty * completions);
+    for (const inp of def.inputs) removeItem(p, inp.item, inp.qty);
     for (const out of def.outputs) {
       const chance = out.chance ?? 1;
-      let got = 0;
-      if (chance >= 1) got = out.qty * completions;
-      else for (let i = 0; i < completions; i++) if (Math.random() < chance) got += out.qty;
-      if (got > 0) {
-        addItem(p, out.item, got);
-        addItemSum(out.item, got);
-      }
+      const got = chance >= 1 ? out.qty : Math.random() < chance ? out.qty : 0;
+      if (got > 0) { addItem(p, out.item, got); addItemSum(out.item, got); }
     }
-    grantXp(p, def.skill, def.xp * completions);
-    addXpSum(def.skill, def.xp * completions);
-    summary.completions += completions;
+    grantXp(p, def.skill, def.xp);
+    addXpSum(def.skill, def.xp);
+    entry.done++;
+    summary.completions++;
+    clock += need; remaining -= need; entry.progressMs = 0;
+    if (entry.target > 0 && entry.done >= entry.target) { if (!promoteNext(p)) break; }
   }
 
-  if (summary.stopped === "no_inputs") {
-    p.action = null;
-  } else {
-    const remainder = capped - completions * durMs;
-    action.startedAt = now - remainder;
-  }
+  if (guildCatches > 0) addGuild.run(guildCatches);
   if (p.buff && now >= p.buff.expiresAt) p.buff = null;
   evaluateAchievements(p, summary);
   p.updatedAt = now;
@@ -371,25 +385,55 @@ export function processElapsed(p: PlayerState, now: number): ProgressSummary {
 // --------------------------------------------------------------------------
 // Actions & economy (validated)
 // --------------------------------------------------------------------------
-export function startAction(p: PlayerState, kind: "fish" | "action", refId: string): { ok: boolean; error?: string } {
-  const now = Date.now();
+// Resolve a request into a validated queue entry.
+function resolveEntry(p: PlayerState, kind: "fish" | "action", refId: string, target: number): { ok: true; entry: QueueEntry } | { ok: false; error: string } {
+  const t = Math.max(0, Math.floor(target || 0));
   if (kind === "fish") {
     const zone = zonesById.get(refId);
     if (!zone) return { ok: false, error: "Unknown fishing spot." };
     if (skillLevel(p, "fishing") < zone.levelReq) return { ok: false, error: `Requires Fishing level ${zone.levelReq}.` };
-    p.action = { type: "fish", refId, startedAt: now };
-  } else {
-    const def = actionsById.get(refId);
-    if (!def) return { ok: false, error: "Unknown action." };
-    if (skillLevel(p, def.skill) < def.levelReq) return { ok: false, error: `Requires ${def.skill} level ${def.levelReq}.` };
-    p.action = { type: def.inputs.length > 0 ? "produce" : "gather", refId, startedAt: now };
+    return { ok: true, entry: { type: "fish", refId, target: t } };
   }
-  p.updatedAt = now;
+  const def = actionsById.get(refId);
+  if (!def) return { ok: false, error: "Unknown action." };
+  if (skillLevel(p, def.skill) < def.levelReq) return { ok: false, error: `Requires ${def.skill} level ${def.levelReq}.` };
+  return { ok: true, entry: { type: def.inputs.length > 0 ? "produce" : "gather", refId, target: t } };
+}
+
+// Start now: replace the active action and clear any pending queue.
+export function startAction(p: PlayerState, kind: "fish" | "action", refId: string, target = 0): { ok: boolean; error?: string } {
+  const r = resolveEntry(p, kind, refId, target);
+  if (!r.ok) return r;
+  p.action = { ...r.entry, done: 0, progressMs: 0 };
+  p.queue = [];
+  p.updatedAt = Date.now();
   return { ok: true };
+}
+
+// Add to the end of the queue (promoting immediately if nothing is active).
+export function enqueueAction(p: PlayerState, kind: "fish" | "action", refId: string, target: number): { ok: boolean; error?: string } {
+  const r = resolveEntry(p, kind, refId, target);
+  if (!r.ok) return r;
+  if (!p.action) p.action = { ...r.entry, done: 0, progressMs: 0 };
+  else p.queue.push(r.entry);
+  p.updatedAt = Date.now();
+  return { ok: true };
+}
+
+export function dequeueAt(p: PlayerState, index: number) {
+  if (index >= 0 && index < p.queue.length) p.queue.splice(index, 1);
+  p.updatedAt = Date.now();
+}
+
+// Finish the active task now and move to the next queued one.
+export function skipAction(p: PlayerState) {
+  promoteNext(p);
+  p.updatedAt = Date.now();
 }
 
 export function stopAction(p: PlayerState) {
   p.action = null;
+  p.queue = [];
   p.updatedAt = Date.now();
 }
 
@@ -478,24 +522,35 @@ export function serializePlayer(p: PlayerState, now = Date.now()) {
     };
   }
 
+  const entryLabel = (type: string, refId: string): { name: string; icon: string } => {
+    if (type === "fish") {
+      const z = zonesById.get(refId);
+      return { name: z ? `Fishing — ${z.name}` : refId, icon: z?.icon ?? "🎣" };
+    }
+    const d = actionsById.get(refId);
+    const skill = d ? gameData.skills.find((s) => s.id === d.skill) : null;
+    return { name: d?.name ?? refId, icon: skill?.icon ?? "⏳" };
+  };
+
   let action: any = null;
   if (p.action) {
-    if (p.action.type === "fish") {
-      const zone = zonesById.get(p.action.refId);
-      if (zone) {
-        const rod = p.equipped.rod ? gameData.items[p.equipped.rod] : undefined;
-        const durSec = zone.baseTimeSec * (rod?.rodSpeedMult ?? 1) * (1 - guildSpeedBonus()) * (buffActive ? p.buff!.speedMult : 1);
-        const elapsed = (now - p.action.startedAt) / 1000;
-        action = { type: "fish", refId: zone.id, name: `Fishing — ${zone.name}`, icon: zone.icon, durationSec: durSec, pct: Math.min(1, elapsed / durSec) };
-      }
-    } else {
-      const def = actionsById.get(p.action.refId);
-      if (def) {
-        const elapsed = (now - p.action.startedAt) / 1000;
-        action = { type: p.action.type, refId: def.id, name: def.name, skill: def.skill, durationSec: def.durationSec, pct: Math.min(1, elapsed / def.durationSec) };
-      }
-    }
+    const durMs = currentDurMs(p, now);
+    const { name, icon } = entryLabel(p.action.type, p.action.refId);
+    action = {
+      type: p.action.type,
+      refId: p.action.refId,
+      name,
+      icon,
+      durationSec: durMs / 1000,
+      pct: Math.min(1, durMs > 0 ? p.action.progressMs / durMs : 0),
+      target: p.action.target,
+      done: p.action.done,
+    };
   }
+  const queue = p.queue.map((q) => {
+    const { name, icon } = entryLabel(q.type, q.refId);
+    return { type: q.type, refId: q.refId, name, icon, target: q.target };
+  });
 
   return {
     userId: p.userId,
@@ -509,5 +564,6 @@ export function serializePlayer(p: PlayerState, now = Date.now()) {
     buff,
     achievements: p.achievements,
     action,
+    queue,
   };
 }
