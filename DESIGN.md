@@ -351,6 +351,17 @@ streaks — not started.
       **Mobile** — re-verified the Phase 2/3 panels (Boathouse, Notice Board,
       Shop) and the new settings modal at 390×844; no regressions, no changes
       needed beyond the original mobile pass.
+- [x] **Card hierarchy + legend pass** — Collection/Achievements cards had
+      grown a stack of full-width `ci-record`/`ci-first`/`ci-shiny`/
+      `ci-title-tag` lines (one per badge), competing visually with the
+      name/meta. Consolidated into a single `.ci-badges` row of small
+      `ci-chip` pills (record/first/shiny/title all share one compact
+      component now, colored per kind) — same information, one line
+      instead of up to four. Added a `❔` legend button (`legendButton()`)
+      to the Fishing/Foraging/Crafting/Cooking, Collection, and Achievements
+      headers, opening a modal that keys the rarity dots, the sky condition
+      icons, and what each badge chip means — there was previously no
+      in-game explanation for any of that.
 
 ## Balancing notes (initial, tune freely)
 

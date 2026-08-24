@@ -133,6 +133,44 @@ $("#settings-btn").onclick = () => {
   document.body.appendChild(overlay);
 };
 
+// ---------------------------------------------------------------- Legend (rarity / sky / badges key)
+function openLegendModal() {
+  const overlay = el("div", "modal-overlay");
+  const rarityRows = RARITY_ORDER
+    .map((r) => `<div class="legend-row"><span class="rar-dot bg-${r}"></span> <span class="r-${r}">${r[0].toUpperCase()}${r.slice(1)}</span></div>`)
+    .join("");
+  const timeRows = Object.entries(TIME_ICON)
+    .map(([id, icon]) => `<div class="legend-row">${icon} ${TIME_LABEL[id]}</div>`)
+    .join("");
+  const weatherRows = Object.entries(WEATHER_ICON)
+    .map(([id, icon]) => `<div class="legend-row">${icon} ${WEATHER_LABEL[id]}</div>`)
+    .join("");
+  overlay.innerHTML = `
+    <div class="modal">
+      <h2>❔ Legend</h2>
+      <h3 class="legend-h">Rarity</h3>
+      <div class="legend-grid">${rarityRows}</div>
+      <h3 class="legend-h">Sky — time of day &amp; weather</h3>
+      <p class="wb-row muted">Some fish only bite when the shared sky (topbar) matches their condition — a dimmed tag on a zone card means it's not biting right now.</p>
+      <div class="legend-grid">${timeRows}${weatherRows}</div>
+      <h3 class="legend-h">Special catches</h3>
+      <div class="legend-row">${ciChip("ci-chip-record", "🏆 42cm")} Trophy Hall record — the biggest of that species either of you has caught.</div>
+      <div class="legend-row">${ciChip("ci-chip-first", "🥇 First")} You were the first to ever catch that shiny or exclusive species.</div>
+      <div class="legend-row">${ciChip("ci-chip-shiny", "💫 ×2")} A shiny catch — a ~1-in-450 chase variant, worth far more.</div>
+      <div class="legend-row"><span class="glow-legendary" style="display:inline-block;width:14px;height:14px;border-radius:4px;border:1px solid;vertical-align:middle;"></span> Glowing border — epic/legendary rarity, or a shiny catch.</div>
+      <button class="wb-close cancel-btn">Close</button>
+    </div>`;
+  overlay.querySelector(".wb-close").onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  document.body.appendChild(overlay);
+}
+function legendButton() {
+  const btn = el("button", "ghost icon-btn legend-btn", "❔");
+  btn.title = "What do the colors and badges mean?";
+  btn.onclick = openLegendModal;
+  return btn;
+}
+
 // ---------------------------------------------------------------- Auth UI
 let authMode = "login";
 $("#tab-login").onclick = () => setAuthMode("login");
@@ -271,6 +309,11 @@ const nameFor = (id) => itemDef(id).name || id;
 const valueFor = (id) => itemDef(id).value;
 const rarityOf = (id) => itemDef(id).rarity || "common";
 const rarityCls = (id) => `r-${rarityOf(id)}`;
+// A small pill for a card's tertiary badges (record/first/shiny/title) — keeps
+// flex-bragging info compact and separated from the primary name/meta.
+function ciChip(cls, html, title) {
+  return `<span class="ci-chip ${cls}"${title ? ` title="${escapeHtml(title)}"` : ""}>${html}</span>`;
+}
 
 // Client-side mirror of the engine's efficiency formula, for display.
 function effInfo(skillId, levelReq) {
@@ -415,6 +458,7 @@ function skillHeader(panel, skill) {
   const sk = state.player.skills[skill.id];
   const head = el("div", "panel-head");
   head.innerHTML = `<h2>${skill.icon} ${skill.name}</h2><span class="lvl">Level ${sk.level}</span>`;
+  head.appendChild(legendButton());
   panel.appendChild(head);
   panel.appendChild(el("p", "panel-blurb", skill.blurb));
   const bar = el("div", "skill-xpbar");
@@ -598,7 +642,9 @@ function renderCollection(panel) {
   const p = state.player;
   const caught = Object.keys(p.bestiary).length;
   const totalFish = state.game.zones.reduce((n, z) => n + z.fish.length, 0);
-  panel.appendChild(el("div", "panel-head", `<h2>📖 Collection</h2><span class="lvl">${caught}/${totalFish} discovered</span>`));
+  const collHead = el("div", "panel-head", `<h2>📖 Collection</h2><span class="lvl">${caught}/${totalFish} discovered</span>`);
+  collHead.appendChild(legendButton());
+  panel.appendChild(collHead);
   panel.appendChild(el("p", "panel-blurb", "Every species you two reel in gets logged here — with your personal record size."));
   for (const z of state.game.zones) {
     const wrap = el("div", "collection-zone");
@@ -607,14 +653,16 @@ function renderCollection(panel) {
     for (const f of z.fish.slice().sort((a, b) => RARITY_ORDER.indexOf(rarityOf(a.item)) - RARITY_ORDER.indexOf(rarityOf(b.item)))) {
       const rec = p.bestiary[f.item];
       const worldRecord = state.records.find((r) => r.species === f.item);
-      const trophyLine = worldRecord ? `<div class="ci-record">🏆 Record: ${escapeHtml(worldRecord.holder_name)} — ${worldRecord.size}cm</div>` : "";
+      const trophyChip = worldRecord ? ciChip("ci-chip-record", `🏆 ${worldRecord.size}cm`, `Trophy Hall record — ${worldRecord.holder_name}`) : "";
       const first = state.firsts.find((r) => r.species === f.item);
-      const firstLine = first ? `<div class="ci-record ci-first">🥇 First: ${escapeHtml(first.holder_name)}</div>` : "";
+      const firstChip = first ? ciChip("ci-chip-first", "🥇 First", `First ever caught by ${first.holder_name}`) : "";
       const shinyId = `shiny_${f.item}`;
       const shinyRec = p.bestiary[shinyId];
-      const shinyLine = shinyRec
-        ? `<div class="ci-record ci-shiny">💫 Shiny caught ×${shinyRec.count.toLocaleString()} — best ${shinyRec.max}cm</div>`
+      const shinyChip = shinyRec
+        ? ciChip("ci-chip-shiny", `💫 ×${shinyRec.count.toLocaleString()}`, `Shiny caught — best ${shinyRec.max}cm`)
         : "";
+      const badges = trophyChip + firstChip + shinyChip;
+      const badgeRow = badges ? `<div class="ci-badges">${badges}</div>` : "";
       const rarity = rarityOf(f.item);
       const condBadge = f.condition ? ` ${conditionBadge(f.condition)}` : "";
       const glowCls = (rec && (rarity === "epic" || rarity === "legendary") ? ` glow-${rarity}` : "") + (shinyRec ? " glow-shiny" : "");
@@ -623,9 +671,7 @@ function renderCollection(panel) {
         <div class="ci-top"><span class="ci-icon">${rec ? iconFor(f.item) : "❔"}</span>
           <span class="ci-name ${rarityCls(f.item)}"><span class="rar-dot bg-${rarityOf(f.item)}"></span>${rec ? nameFor(f.item) : "???"}${condBadge}</span></div>
         <div class="ci-meta">${rec ? `Caught ${rec.count.toLocaleString()} · your best ${rec.max} cm` : `Not yet discovered`}</div>
-        ${trophyLine}
-        ${firstLine}
-        ${shinyLine}
+        ${badgeRow}
       `;
       grid.appendChild(item);
     }
@@ -1060,18 +1106,20 @@ function renderAchievements(panel) {
   const p = state.player;
   const unlocked = new Set(p.achievements || []);
   const equippedTitle = p.equipped.title;
-  panel.appendChild(el("div", "panel-head", `<h2>🏆 Achievements</h2><span class="lvl">${unlocked.size}/${state.game.achievements.length}</span>`));
+  const achHead = el("div", "panel-head", `<h2>🏆 Achievements</h2><span class="lvl">${unlocked.size}/${state.game.achievements.length}</span>`);
+  achHead.appendChild(legendButton());
+  panel.appendChild(achHead);
   panel.appendChild(el("p", "panel-blurb", "Goals to chase while you fish. Each one pays out coins when you earn it — some also unlock a title you can wear next to your name."));
   const grid = el("div", "col-grid");
   for (const a of state.game.achievements) {
     const got = unlocked.has(a.id);
     const equipped = equippedTitle === a.id;
     const item = el("div", "col-item" + (got ? "" : " uncaught") + (equipped ? " glow-shiny" : ""));
-    const titleLine = a.title ? `<div class="ci-record ci-title-tag">🎖️ Title: “${a.title}”</div>` : "";
+    const titleChip = a.title ? `<div class="ci-badges">${ciChip("ci-chip-title", `🎖️ “${a.title}”`, "Equippable title")}</div>` : "";
     item.innerHTML = `
       <div class="ci-top"><span class="ci-icon">${got ? a.icon : "🔒"}</span><span class="ci-name">${a.name}</span></div>
       <div class="ci-meta">${a.desc}<br/><span style="color:var(--accent-2)">🪙 ${a.coins}</span> ${got ? "· ✅ earned" : ""}</div>
-      ${titleLine}
+      ${titleChip}
     `;
     if (got && a.title) {
       const btn = el("button", "title-btn", equipped ? "★ Equipped — click to unequip" : "Equip title");

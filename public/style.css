@@ -116,6 +116,7 @@ input:focus { outline: none; border-color: var(--accent); }
 .hp-fill { display: block; height: 100%; background: var(--hp); width: 100%; transition: width .3s; }
 .ghost { background: transparent; border: 1px solid var(--line); color: var(--muted); border-radius: 8px; padding: 6px 12px; }
 .icon-btn { padding: 6px 10px; font-size: 1rem; line-height: 1; }
+.legend-btn { margin-left: auto; padding: 2px 9px; font-size: .85rem; }
 
 #layout { flex: 1; display: grid; grid-template-columns: 210px 1fr 280px; min-height: 0; }
 #sidebar { background: var(--bg-2); border-right: 1px solid var(--line); overflow-y: auto; padding: 12px 8px; }
@@ -259,7 +260,24 @@ input:focus { outline: none; border-color: var(--accent); }
   display: block; width: 100%; margin-top: 8px; background: var(--bg); border: 1px solid var(--accent-2);
   color: var(--accent-2); border-radius: 8px; padding: 6px; font-size: .78rem; cursor: pointer;
 }
-.ci-title-tag { color: var(--accent-2); }
+
+/* ---------- Card badge row (record/first/shiny/title — tertiary info) ---------- */
+.ci-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.ci-chip {
+  display: inline-flex; align-items: center; gap: 2px; border-radius: 6px; padding: 1px 6px;
+  font-size: .72rem; font-weight: 600; background: var(--bg); border: 1px solid var(--line);
+}
+.ci-chip-record { color: var(--accent-2); border-color: var(--accent-2); }
+.ci-chip-first { color: var(--xp); border-color: var(--xp); }
+.ci-chip-shiny { color: #f0b866; border-color: #f0b866; }
+.ci-chip-title { color: var(--accent-2); border-color: var(--accent-2); }
+
+/* ---------- Legend modal ---------- */
+.legend-h { font-size: .9rem; margin: 16px 0 6px; color: var(--text); }
+.legend-h:first-of-type { margin-top: 4px; }
+.legend-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px 10px; margin-bottom: 4px; }
+.legend-row { display: flex; align-items: center; gap: 6px; font-size: .82rem; color: var(--muted); line-height: 1.5; }
+.legend-grid .legend-row { color: var(--text); }
 
 #chat-log { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; font-size: .85rem; margin-bottom: 8px; }
 .msg .cname { color: var(--accent); font-weight: 600; margin-right: 5px; }
@@ -350,10 +368,6 @@ input:focus { outline: none; border-color: var(--accent); }
 .tag-item.exclusive-on { border: 1px solid var(--accent); box-shadow: 0 0 6px rgba(108,201,160,.4); }
 .tag-item.exclusive-off { opacity: .55; }
 
-/* ---------- Firsts board ---------- */
-.ci-first { color: var(--xp); font-size: .76rem; margin-top: 2px; font-weight: 600; }
-.ci-shiny { color: #f0b866; font-size: .76rem; margin-top: 2px; font-weight: 600; }
-
 /* ---------- Shiny glow (a chase variant, distinct from rarity glow) ---------- */
 @keyframes glow-pulse-shiny {
   0%   { box-shadow: 0 0 8px 0 rgba(240,184,102,.5); border-color: rgba(240,184,102,.7); }
@@ -430,9 +444,6 @@ input:focus { outline: none; border-color: var(--accent); }
 .plus-badge { display: inline-block; background: var(--accent-2); color: #241a0d; border-radius: 6px; padding: 0 5px; font-size: .72rem; font-weight: 700; vertical-align: middle; }
 .lacquer-ctl { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; cursor: pointer; }
 .cancel-btn { margin-top: 8px; width: 100%; background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 10px; }
-
-/* ---------- Trophy records ---------- */
-.ci-record { color: var(--accent-2); font-size: .76rem; margin-top: 4px; font-weight: 600; }
 
 .toast-wrap { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; z-index: 50; }
 .toast { background: var(--bg-3); border: 1px solid var(--accent); color: var(--text); padding: 8px 14px; border-radius: 8px; font-size: .85rem; animation: fade 3s forwards; }
