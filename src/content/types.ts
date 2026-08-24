@@ -32,6 +32,11 @@ export interface ItemDef {
 
   // Bait-only (consumed per catch while active)
   baitRareBonus?: number;
+
+  // Dish-only (eaten for a timed fishing buff)
+  buffDurationSec?: number;
+  buffSpeedMult?: number; // multiplies cast time while active (lower = faster)
+  buffRareBonus?: number; // added to rare-catch bonus while active
 }
 
 // A fishing spot. Each catch rolls one species from the weighted table.

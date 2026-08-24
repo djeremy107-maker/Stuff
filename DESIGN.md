@@ -36,6 +36,11 @@ it incremental depth for two players.
   by the zone, and ticks the shared Guild counter.
 - **Shared Guild** (`guild` table): total catches across both players → Guild
   level → a cast-speed bonus applied to everyone. Coop incremental progression.
+- **Shared Bank** (`bank` table + `src/bank.ts`): a single item stash both
+  players deposit into / withdraw from; changes are broadcast live to both.
+- **Meal buffs**: eating a dish sets a per-player buff `{ speedMult, rareBonus,
+  expiresAt }`. The fishing loop walks sim-time forward and checks the buff per
+  cast, so it applies exactly (and expires mid-window correctly) even offline.
 - **Persistence** (`src/db.ts`): SQLite. `characters` stores coins, a skills XP
   map, inventory, bestiary, equipped rod, and the current action. Offline
   progress falls out of the action's start timestamp.
@@ -54,12 +59,15 @@ Production is additionally limited by available inputs.
 ## Roadmap
 
 ### Near term
-- [ ] **Meal buffs** — eat a cooked dish for a temporary boost (faster casts or
-      +rare) instead of only selling it. (The engine already isolates duration &
-      rareBonus, so this slots in cleanly.)
+- [x] **Meal buffs** — eat a cooked dish for a timed boost to cast speed and rare
+      chance instead of only selling it. Buff is tracked per-player with an
+      absolute expiry, applied per-cast (so it's exact across the offline window
+      and clears mid-window correctly).
+- [x] **Shared bank** — a single shared stash both anglers deposit into and
+      withdraw from, broadcast live to both. (Direct gifting/shared coins TBD.)
 - [ ] **Action queue** — line up multiple casts/crafts (MWI-style).
-- [ ] **Shared bank / gifting** — deposit into a shared stash or send fish &
-      materials to your partner.
+- [ ] **Direct gifting & shared coins** — send items straight to your partner;
+      an optional shared coin pool.
 - [ ] **Guild goals & milestones** — combined targets ("catch 100 legendaries")
       that unlock cosmetic titles or perks for both.
 - [ ] **Fishing events** — timed "the fish are biting at Coral Harbor" windows

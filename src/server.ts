@@ -19,9 +19,11 @@ import {
   unequipRod,
   sellItem,
   buyItem,
+  eatDish,
   guildInfo,
   type PlayerState,
 } from "./engine.js";
+import { loadBank, deposit, withdraw } from "./bank.js";
 import { levelForXp } from "./leveling.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -111,6 +113,9 @@ function buildPresence() {
 function broadcastPresence() {
   broadcast({ type: "presence", ...buildPresence() });
 }
+function broadcastBank() {
+  broadcast({ type: "bank", items: loadBank() });
+}
 
 // ---- Chat ----
 const insertMsg = db.prepare("INSERT INTO messages (user_id, name, text, ts) VALUES (?, ?, ?, ?)");
@@ -155,6 +160,7 @@ wss.on("connection", (ws, req) => {
   addConn(userId, ws);
   tickPlayer(userId);
   ws.send(JSON.stringify({ type: "chat_history", messages: recentChat() }));
+  ws.send(JSON.stringify({ type: "bank", items: loadBank() }));
   broadcastPresence();
 
   ws.on("message", (raw) => {
@@ -185,6 +191,17 @@ wss.on("connection", (ws, req) => {
         break;
       case "buy":
         withPlayer(userId, (p) => ({ actionResult: buyItem(p, String(msg.item), Number(msg.qty ?? 1)) }));
+        break;
+      case "eat":
+        withPlayer(userId, (p) => ({ actionResult: eatDish(p, String(msg.item)) }));
+        break;
+      case "deposit":
+        withPlayer(userId, (p) => ({ actionResult: deposit(p, String(msg.item), Number(msg.qty ?? 1)) }));
+        broadcastBank();
+        break;
+      case "withdraw":
+        withPlayer(userId, (p) => ({ actionResult: withdraw(p, String(msg.item), Number(msg.qty ?? 1)) }));
+        broadcastBank();
         break;
       case "chat": {
         const text = String(msg.text ?? "").slice(0, 500).trim();

@@ -7,7 +7,7 @@ rods, and level up a shared **Anglers' Guild** together.
 
 Built for two people (you + your girlfriend), and designed to keep growing.
 
-## What's in it (v0.2)
+## What's in it (v0.3)
 
 - **6 fishing zones** — Backyard Pond → Riverbank → Misty Lake → Coral Harbor →
   Deep Sea → Abyssal Trench, each unlocking with your Fishing level.
@@ -22,6 +22,11 @@ Built for two people (you + your girlfriend), and designed to keep growing.
   into valuable dishes).
 - **Rods & bait** — craft or buy rods that fish faster and improve your rare
   chance; toggle bait on to hunt for the good stuff.
+- **Meal buffs** — cook your catch into dishes and *eat* them for a timed boost
+  to cast speed and rare chance (or just sell them). The buff ticks down live and
+  even applies correctly to offline progress.
+- **Shared Bank** 🏦 — a stash you both use. Deposit fish and materials so either
+  of you can grab them, updated live for both of you no matter who's online.
 - **Economy** — sell your catch for coins, buy essentials from the shop.
 - **Shared Anglers' Guild** 🏛️ — every fish *either* of you catches levels up a
   shared Guild, which makes casts faster for *both* of you. Genuine coop

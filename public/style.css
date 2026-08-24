@@ -206,6 +206,13 @@ input:focus { outline: none; border-color: var(--accent); }
 #guild-box .g-bar > span { display: block; height: 100%; background: var(--accent-2); }
 #guild-box .g-perk { color: var(--accent); font-size: .8rem; margin-top: 8px; }
 
+/* ---------- Buff chip ---------- */
+.stat.buff { color: var(--accent-2); background: var(--bg-3); border: 1px solid var(--accent-2); border-radius: 8px; padding: 3px 10px; font-size: .82rem; }
+.stat.buff .muted { color: var(--muted); }
+
+/* ---------- Bank ---------- */
+.bank-sub { font-size: .95rem; color: var(--muted); margin: 6px 0 10px; }
+
 /* ---------- Inventory item actions ---------- */
 .inv-item { position: relative; }
 .inv-item .ii-actions { display: flex; gap: 4px; margin-top: 6px; justify-content: center; }

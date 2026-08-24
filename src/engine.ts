@@ -43,6 +43,13 @@ export interface ActionState {
   startedAt: number;
 }
 
+export interface BuffState {
+  dishId: string;
+  speedMult: number; // multiplies cast time (lower = faster)
+  rareBonus: number;
+  expiresAt: number; // ms epoch
+}
+
 export interface PlayerState {
   userId: number;
   name: string;
@@ -52,18 +59,19 @@ export interface PlayerState {
   bestiary: Record<string, { count: number; max: number }>;
   equipped: { rod?: string };
   baitActive: boolean;
+  buff: BuffState | null;
   action: ActionState | null;
   updatedAt: number;
 }
 
 const selectChar = db.prepare<[number]>("SELECT * FROM characters WHERE user_id = ?");
 const upsertChar = db.prepare(`
-  INSERT INTO characters (user_id, name, coins, skills_json, inventory_json, bestiary_json, equipped_json, action_json, bait_active, updated_at)
-  VALUES (@user_id, @name, @coins, @skills_json, @inventory_json, @bestiary_json, @equipped_json, @action_json, @bait_active, @updated_at)
+  INSERT INTO characters (user_id, name, coins, skills_json, inventory_json, bestiary_json, equipped_json, action_json, bait_active, buff_json, updated_at)
+  VALUES (@user_id, @name, @coins, @skills_json, @inventory_json, @bestiary_json, @equipped_json, @action_json, @bait_active, @buff_json, @updated_at)
   ON CONFLICT(user_id) DO UPDATE SET
     coins=@coins, skills_json=@skills_json, inventory_json=@inventory_json,
     bestiary_json=@bestiary_json, equipped_json=@equipped_json,
-    action_json=@action_json, bait_active=@bait_active, updated_at=@updated_at
+    action_json=@action_json, bait_active=@bait_active, buff_json=@buff_json, updated_at=@updated_at
 `);
 
 export function loadPlayer(userId: number): PlayerState | null {
@@ -78,6 +86,7 @@ export function loadPlayer(userId: number): PlayerState | null {
     bestiary: JSON.parse(row.bestiary_json),
     equipped: JSON.parse(row.equipped_json),
     baitActive: !!row.bait_active,
+    buff: row.buff_json ? JSON.parse(row.buff_json) : null,
     action: row.action_json ? JSON.parse(row.action_json) : null,
     updatedAt: row.updated_at,
   };
@@ -94,6 +103,7 @@ export function savePlayer(p: PlayerState): void {
     equipped_json: JSON.stringify(p.equipped),
     action_json: p.action ? JSON.stringify(p.action) : null,
     bait_active: p.baitActive ? 1 : 0,
+    buff_json: p.buff ? JSON.stringify(p.buff) : "",
     updated_at: p.updatedAt,
   });
 }
@@ -111,6 +121,7 @@ export function createCharacter(userId: number, name: string): PlayerState {
     bestiary: {},
     equipped: {},
     baitActive: false,
+    buff: null,
     action: null,
     updatedAt: now,
   };
@@ -192,6 +203,7 @@ export function processElapsed(p: PlayerState, now: number): ProgressSummary {
   const addXpSum = (s: string, x: number) => (summary.xpGained[s] = (summary.xpGained[s] || 0) + x);
 
   if (!p.action) {
+    if (p.buff && now >= p.buff.expiresAt) p.buff = null;
     p.updatedAt = now;
     return summary;
   }
@@ -209,15 +221,20 @@ export function processElapsed(p: PlayerState, now: number): ProgressSummary {
     const speedMult = rod?.rodSpeedMult ?? 1;
     const rodRare = rod?.rodRareBonus ?? 0;
     const gBonus = guildSpeedBonus();
-    const durMs = zone.baseTimeSec * speedMult * (1 - gBonus) * 1000;
+    const baseCastMs = zone.baseTimeSec * speedMult * (1 - gBonus) * 1000;
 
-    let budget = capped;
+    const end = action.startedAt + capped; // absolute sim end time
+    let simTime = action.startedAt; // absolute time as we walk forward
     let guard = 0;
     let guildCatches = 0;
-    while (budget >= durMs && guard < SIM_GUARD) {
+    while (guard < SIM_GUARD) {
       guard++;
+      // Is a meal buff active at this point in (sim) time?
+      const buffed = p.buff && simTime < p.buff.expiresAt;
+      const durMs = buffed ? baseCastMs * p.buff!.speedMult : baseCastMs;
+      if (end - simTime < durMs) break;
       // Choose (and consume) bait for this cast.
-      let rareBonus = rodRare;
+      let rareBonus = rodRare + (buffed ? p.buff!.rareBonus : 0);
       if (p.baitActive) {
         const bait = bestBait(p);
         if (bait) {
@@ -252,11 +269,12 @@ export function processElapsed(p: PlayerState, now: number): ProgressSummary {
 
       guildCatches++;
       summary.completions++;
-      budget -= durMs;
+      simTime += durMs;
     }
     if (guildCatches > 0) addGuild.run(guildCatches);
-    const remainder = budget;
+    const remainder = end - simTime; // partial progress toward the next cast
     action.startedAt = now - remainder;
+    if (p.buff && now >= p.buff.expiresAt) p.buff = null;
     p.updatedAt = now;
     return summary;
   }
@@ -303,6 +321,7 @@ export function processElapsed(p: PlayerState, now: number): ProgressSummary {
     const remainder = capped - completions * durMs;
     action.startedAt = now - remainder;
   }
+  if (p.buff && now >= p.buff.expiresAt) p.buff = null;
   p.updatedAt = now;
   return summary;
 }
@@ -335,6 +354,21 @@ export function stopAction(p: PlayerState) {
 export function setBait(p: PlayerState, active: boolean) {
   p.baitActive = active;
   p.updatedAt = Date.now();
+}
+
+export function eatDish(p: PlayerState, item: string): { ok: boolean; error?: string } {
+  const def = gameData.items[item];
+  if (!def || def.category !== "dish" || def.buffDurationSec == null) return { ok: false, error: "That isn't an edible dish." };
+  if ((p.inventory[item] || 0) < 1) return { ok: false, error: "You don't have that dish." };
+  removeItem(p, item, 1);
+  p.buff = {
+    dishId: item,
+    speedMult: def.buffSpeedMult ?? 1,
+    rareBonus: def.buffRareBonus ?? 0,
+    expiresAt: Date.now() + def.buffDurationSec * 1000,
+  };
+  p.updatedAt = Date.now();
+  return { ok: true };
 }
 
 export function equipRod(p: PlayerState, item: string): { ok: boolean; error?: string } {
@@ -387,13 +421,28 @@ export function serializePlayer(p: PlayerState, now = Date.now()) {
     skills[s.id] = { xp, level: prog.level, into: prog.into, needed: prog.needed, pct: prog.pct };
   }
 
+  const buffActive = p.buff && now < p.buff.expiresAt;
+  let buff: any = null;
+  if (buffActive && p.buff) {
+    const d = gameData.items[p.buff.dishId];
+    buff = {
+      dishId: p.buff.dishId,
+      name: d?.name ?? p.buff.dishId,
+      icon: d?.icon ?? "⭐",
+      speedMult: p.buff.speedMult,
+      rareBonus: p.buff.rareBonus,
+      expiresAt: p.buff.expiresAt,
+      remainingSec: Math.max(0, Math.round((p.buff.expiresAt - now) / 1000)),
+    };
+  }
+
   let action: any = null;
   if (p.action) {
     if (p.action.type === "fish") {
       const zone = zonesById.get(p.action.refId);
       if (zone) {
         const rod = p.equipped.rod ? gameData.items[p.equipped.rod] : undefined;
-        const durSec = zone.baseTimeSec * (rod?.rodSpeedMult ?? 1) * (1 - guildSpeedBonus());
+        const durSec = zone.baseTimeSec * (rod?.rodSpeedMult ?? 1) * (1 - guildSpeedBonus()) * (buffActive ? p.buff!.speedMult : 1);
         const elapsed = (now - p.action.startedAt) / 1000;
         action = { type: "fish", refId: zone.id, name: `Fishing — ${zone.name}`, icon: zone.icon, durationSec: durSec, pct: Math.min(1, elapsed / durSec) };
       }
@@ -415,6 +464,7 @@ export function serializePlayer(p: PlayerState, now = Date.now()) {
     bestiary: p.bestiary,
     equipped: p.equipped,
     baitActive: p.baitActive,
+    buff,
     action,
   };
 }

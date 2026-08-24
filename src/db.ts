@@ -37,6 +37,22 @@ db.exec(`
   );
   INSERT OR IGNORE INTO guild (id, total_catches) VALUES (1, 0);
 
+  -- Shared bank: a stash both anglers can deposit into and withdraw from.
+  CREATE TABLE IF NOT EXISTS bank (
+    id         INTEGER PRIMARY KEY CHECK (id = 1),
+    items_json TEXT NOT NULL DEFAULT '{}'
+  );
+  INSERT OR IGNORE INTO bank (id, items_json) VALUES (1, '{}');`);
+
+// Lightweight migrations for databases created before a column existed.
+function ensureColumn(table: string, column: string, ddl: string) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (!cols.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+}
+ensureColumn("characters", "buff_json", "buff_json TEXT NOT NULL DEFAULT ''");
+
+db.exec(`
+
   CREATE TABLE IF NOT EXISTS sessions (
     token      TEXT PRIMARY KEY,
     user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -69,6 +85,7 @@ export interface CharacterRow {
   equipped_json: string;
   action_json: string | null;
   bait_active: number;
+  buff_json: string;
   updated_at: number;
 }
 

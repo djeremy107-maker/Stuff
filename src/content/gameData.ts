@@ -70,12 +70,12 @@ const itemList: ItemDef[] = [
   { id: "carbon_rod", name: "Carbon Rod", icon: "🎣", category: "rod", value: 400, rodSpeedMult: 0.72, rodRareBonus: 0.12 },
   { id: "anglers_pro_rod", name: "Angler's Pro Rod", icon: "🏆", category: "rod", value: 1500, rodSpeedMult: 0.6, rodRareBonus: 0.2 },
 
-  // ---- Dishes (cooking outputs) ----
-  { id: "grilled_trout", name: "Grilled Trout", icon: "🍤", category: "dish", value: 30 },
-  { id: "salmon_fillet", name: "Salmon Fillet", icon: "🍥", category: "dish", value: 55 },
-  { id: "tuna_steak", name: "Tuna Steak", icon: "🥩", category: "dish", value: 200 },
-  { id: "seafood_platter", name: "Seafood Platter", icon: "🍱", category: "dish", value: 380 },
-  { id: "sashimi_deluxe", name: "Sashimi Deluxe", icon: "🍣", category: "dish", value: 620 },
+  // ---- Dishes (cooking outputs) — sell for coins OR eat for a timed fishing buff ----
+  { id: "grilled_trout", name: "Grilled Trout", icon: "🍤", category: "dish", value: 30, buffDurationSec: 300, buffSpeedMult: 0.95, buffRareBonus: 0.02 },
+  { id: "salmon_fillet", name: "Salmon Fillet", icon: "🍥", category: "dish", value: 55, buffDurationSec: 480, buffSpeedMult: 0.92, buffRareBonus: 0.04 },
+  { id: "tuna_steak", name: "Tuna Steak", icon: "🥩", category: "dish", value: 200, buffDurationSec: 720, buffSpeedMult: 0.88, buffRareBonus: 0.06 },
+  { id: "seafood_platter", name: "Seafood Platter", icon: "🍱", category: "dish", value: 380, buffDurationSec: 900, buffSpeedMult: 0.85, buffRareBonus: 0.08 },
+  { id: "sashimi_deluxe", name: "Sashimi Deluxe", icon: "🍣", category: "dish", value: 620, buffDurationSec: 1200, buffSpeedMult: 0.8, buffRareBonus: 0.1 },
 ];
 
 const items: Record<string, ItemDef> = {};

@@ -13,7 +13,8 @@ const state = {
   player: null,
   presence: [],
   guild: null,
-  tab: "fishing", // skill id, or "collection" / "shop"
+  bank: {},
+  tab: "fishing", // skill id, or "collection" / "shop" / "bank"
   ws: null,
   anim: { refId: null, durationSec: 1, cycleStart: 0 },
 };
@@ -88,6 +89,9 @@ function connectWs() {
       state.guild = msg.guild;
       renderParty();
       renderGuild();
+    } else if (msg.type === "bank") {
+      state.bank = msg.items || {};
+      if (state.tab === "bank") renderPanel();
     } else if (msg.type === "chat_history") {
       $("#chat-log").innerHTML = "";
       msg.messages.forEach(addChatMsg);
@@ -139,7 +143,25 @@ function renderTopbar() {
   $("#stat-coins").textContent = `🪙 ${p.coins.toLocaleString()}`;
   const rod = p.equipped.rod;
   $("#stat-rod").textContent = rod ? `${iconFor(rod)} ${nameFor(rod)}` : "🖐️ Bare hands";
+  updateBuffChip();
 }
+
+function fmtTime(sec) {
+  sec = Math.max(0, Math.floor(sec));
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+function updateBuffChip() {
+  const chip = $("#stat-buff");
+  const b = state.player?.buff;
+  if (!b) return void chip.classList.add("hidden");
+  const remaining = (b.expiresAt - Date.now()) / 1000;
+  if (remaining <= 0) return void chip.classList.add("hidden");
+  chip.classList.remove("hidden");
+  chip.innerHTML = `${b.icon} <b>${b.name}</b> <span class="muted">+${Math.round((1 - b.speedMult) * 100)}%⚡ +${Math.round(b.rareBonus * 100)}%✨</span> ${fmtTime(remaining)}`;
+}
+setInterval(updateBuffChip, 1000);
 
 // ---------------------------------------------------------------- Nav
 function renderNav() {
@@ -154,7 +176,7 @@ function renderNav() {
   }
   const extra = $("#extra-nav");
   extra.innerHTML = "";
-  for (const [id, icon, label] of [["collection", "📖", "Collection"], ["shop", "🛒", "Shop"]]) {
+  for (const [id, icon, label] of [["collection", "📖", "Collection"], ["bank", "🏦", "Shared Bank"], ["shop", "🛒", "Shop"]]) {
     const item = el("div", "nav-item" + (state.tab === id ? " active" : ""));
     item.innerHTML = `<span class="nicon">${icon}</span><span>${label}</span>`;
     item.onclick = () => selectTab(id);
@@ -174,6 +196,7 @@ function renderPanel() {
   panel.innerHTML = "";
   if (state.tab === "collection") return renderCollection(panel);
   if (state.tab === "shop") return renderShop(panel);
+  if (state.tab === "bank") return renderBank(panel);
   if (state.tab === "fishing") return renderFishing(panel);
   return renderSkill(panel, state.tab);
 }
@@ -319,6 +342,56 @@ function renderShop(panel) {
   }
 }
 
+// ---- Shared Bank ----
+function renderBank(panel) {
+  const p = state.player;
+  panel.appendChild(el("div", "panel-head", `<h2>🏦 Shared Bank</h2><span class="lvl">for both anglers</span>`));
+  panel.appendChild(el("p", "panel-blurb", "A stash you both share. Deposit fish and materials here so either of you can grab them — no matter who's online."));
+
+  // Bank contents (withdraw)
+  panel.appendChild(el("h3", "bank-sub", "🏦 In the bank"));
+  const bankEntries = Object.entries(state.bank).filter(([, q]) => q > 0).sort((a, b) => nameFor(a[0]).localeCompare(nameFor(b[0])));
+  const bankGrid = el("div", "inv-grid");
+  if (!bankEntries.length) bankGrid.appendChild(el("p", "empty-note", "The bank is empty. Deposit something below!"));
+  for (const [id, qty] of bankEntries) {
+    const item = el("div", "inv-item");
+    item.title = nameFor(id);
+    item.innerHTML = `<div class="ii-icon">${iconFor(id)}</div><div class="ii-qty">${qty.toLocaleString()}</div><span class="ii-name ${rarityCls(id)}">${nameFor(id)}</span>`;
+    const act = el("div", "ii-actions");
+    const w1 = el("button", null, "Take 1");
+    w1.onclick = () => send({ type: "withdraw", item: id, qty: 1 });
+    const wa = el("button", null, "All");
+    wa.onclick = () => send({ type: "withdraw", item: id, qty });
+    act.appendChild(w1);
+    act.appendChild(wa);
+    item.appendChild(act);
+    bankGrid.appendChild(item);
+  }
+  panel.appendChild(bankGrid);
+
+  // Your bag (deposit)
+  panel.appendChild(el("h3", "bank-sub", "🎒 Your bag — deposit"));
+  const bagEntries = Object.entries(p.inventory).filter(([, q]) => q > 0).sort((a, b) => nameFor(a[0]).localeCompare(nameFor(b[0])));
+  const bagGrid = el("div", "inv-grid");
+  if (!bagEntries.length) bagGrid.appendChild(el("p", "empty-note", "Nothing to deposit."));
+  for (const [id, qty] of bagEntries) {
+    const equipped = p.equipped.rod === id;
+    const item = el("div", "inv-item" + (equipped ? " equipped" : ""));
+    item.title = nameFor(id);
+    item.innerHTML = `<div class="ii-icon">${iconFor(id)}</div><div class="ii-qty">${qty.toLocaleString()}</div><span class="ii-name ${rarityCls(id)}">${nameFor(id)}</span>`;
+    const act = el("div", "ii-actions");
+    const d1 = el("button", null, "Bank 1");
+    d1.onclick = () => send({ type: "deposit", item: id, qty: 1 });
+    const da = el("button", null, "All");
+    da.onclick = () => send({ type: "deposit", item: id, qty });
+    act.appendChild(d1);
+    act.appendChild(da);
+    item.appendChild(act);
+    bagGrid.appendChild(item);
+  }
+  panel.appendChild(bagGrid);
+}
+
 // ---------------------------------------------------------------- Inventory
 function renderInventory() {
   const grid = $("#inventory-grid");
@@ -340,6 +413,12 @@ function renderInventory() {
       const eq = el("button", null, equipped ? "Unequip" : "Equip");
       eq.onclick = () => send(equipped ? { type: "unequip" } : { type: "equip", item: id });
       act.appendChild(eq);
+    }
+    if (d.category === "dish" && d.buffDurationSec) {
+      const eat = el("button", null, "Eat");
+      eat.title = `+${Math.round((1 - d.buffSpeedMult) * 100)}% cast speed, +${Math.round(d.buffRareBonus * 100)}% rare for ${Math.round(d.buffDurationSec / 60)} min`;
+      eat.onclick = () => send({ type: "eat", item: id });
+      act.appendChild(eat);
     }
     if (valueFor(id) != null) {
       const s1 = el("button", null, "Sell 1");
