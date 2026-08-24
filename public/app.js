@@ -18,6 +18,8 @@ const state = {
   records: [],
   noticeBoard: null,
   event: null,
+  world: null,
+  firsts: [],
   pendingWelcome: false,
   queueQty: 50, // 0 = infinite
   tab: "fishing", // skill id, or "collection" / "shop" / "bank" / "achievements"
@@ -68,6 +70,13 @@ function sfxLevelUp(milestone) {
 }
 function sfxAchievement() { tone(587, 0, .1, { gain: .12 }); tone(880, .09, .22, { gain: .14 }); }
 function sfxGuild() { tone(440, 0, .14); tone(554, .1, .14); tone(659, .2, .14); tone(880, .3, .4, { gain: .16 }); }
+function sfxShiny() {
+  tone(660, 0, .1, { type: "triangle", gain: .1 });
+  tone(880, .06, .1, { type: "triangle", gain: .11 });
+  tone(1100, .12, .1, { type: "triangle", gain: .12 });
+  tone(1320, .18, .1, { type: "triangle", gain: .13 });
+  tone(1760, .26, .35, { type: "sine", gain: .15 });
+}
 function sfxNotify() { tone(700, 0, .08, { type: "triangle", gain: .08 }); tone(900, .05, .1, { type: "triangle", gain: .07 }); }
 function sfxError() { tone(300, 0, .12, { type: "triangle", gain: .09 }); tone(220, .08, .16, { type: "triangle", gain: .09 }); }
 
@@ -217,6 +226,13 @@ function connectWs() {
     } else if (msg.type === "notice_board") {
       state.noticeBoard = msg;
       if (state.tab === "notice_board") renderPanel();
+    } else if (msg.type === "world") {
+      state.world = msg;
+      renderWorldStat();
+      if (state.tab === "fishing") renderPanel();
+    } else if (msg.type === "firsts") {
+      state.firsts = msg.firsts || [];
+      if (state.tab === "collection") renderPanel();
     } else if (msg.type === "celebration") {
       // A shared moment (Guild level-up / milestone) — everyone sees the same fanfare at once.
       if (msg.kind === "guildLevelUp") celebrateGuildLevelUp(msg.data);
@@ -283,6 +299,33 @@ function renderTopbar() {
   const rod = p.equipped.rod;
   $("#stat-rod").textContent = rod ? `${iconFor(rod)} ${nameFor(rod)}` : "🖐️ Bare hands";
   updateBuffChips();
+  renderWorldStat();
+}
+
+// ---------------------------------------------------------------- Shared world clock
+const TIME_ICON = { dawn: "🌅", day: "☀️", dusk: "🌆", night: "🌙" };
+const TIME_LABEL = { dawn: "Dawn", day: "Day", dusk: "Dusk", night: "Night" };
+const WEATHER_ICON = { clear: "🌤️", rain: "🌧️", storm: "🌩️", fog: "🌫️" };
+const WEATHER_LABEL = { clear: "Clear", rain: "Rain", storm: "Storm", fog: "Fog" };
+function worldMatches(condition) {
+  if (!condition || !state.world) return true;
+  if (condition.time && !condition.time.includes(state.world.time)) return false;
+  if (condition.weather && !condition.weather.includes(state.world.weather)) return false;
+  return true;
+}
+function conditionBadge(condition) {
+  const parts = [];
+  for (const t of condition.time || []) parts.push(TIME_ICON[t]);
+  for (const w of condition.weather || []) parts.push(WEATHER_ICON[w]);
+  return `<span class="cond-badge">${parts.join("")}</span>`;
+}
+function renderWorldStat() {
+  const chip = $("#stat-world");
+  const w = state.world;
+  if (!w) return void chip.classList.add("hidden");
+  chip.classList.remove("hidden");
+  const weatherPart = w.weather !== "clear" ? ` ${WEATHER_ICON[w.weather]} ${WEATHER_LABEL[w.weather]}` : "";
+  chip.textContent = `${TIME_ICON[w.time]} ${TIME_LABEL[w.time]}${weatherPart}`;
 }
 
 function fmtTime(sec) {
@@ -436,7 +479,13 @@ function zoneCard(z) {
   const fishTags = z.fish
     .slice()
     .sort((a, b) => RARITY_ORDER.indexOf(rarityOf(a.item)) - RARITY_ORDER.indexOf(rarityOf(b.item)))
-    .map((f) => `<span class="tag-item ${rarityCls(f.item)}">${iconFor(f.item)} ${nameFor(f.item)}</span>`)
+    .map((f) => {
+      if (!f.condition) return `<span class="tag-item ${rarityCls(f.item)}">${iconFor(f.item)} ${nameFor(f.item)}</span>`;
+      const badge = conditionBadge(f.condition);
+      const cls = worldMatches(f.condition) ? "exclusive-on" : "exclusive-off";
+      const title = worldMatches(f.condition) ? "Biting right now!" : "Not biting right now — check the sky in the topbar.";
+      return `<span class="tag-item ${rarityCls(f.item)} ${cls}" title="${title}">${iconFor(f.item)} ${nameFor(f.item)} ${badge}</span>`;
+    })
     .join("");
   const eff = effInfo("fishing", z.levelReq);
   const effLine = !locked && eff.pct > 0 ? `<div class="c-meta eff">⚡ ${eff.pct}% efficiency <span class="muted">(bonus catches from your level)</span></div>` : "";
@@ -536,14 +585,24 @@ function renderCollection(panel) {
       const rec = p.bestiary[f.item];
       const worldRecord = state.records.find((r) => r.species === f.item);
       const trophyLine = worldRecord ? `<div class="ci-record">🏆 Record: ${escapeHtml(worldRecord.holder_name)} — ${worldRecord.size}cm</div>` : "";
+      const first = state.firsts.find((r) => r.species === f.item);
+      const firstLine = first ? `<div class="ci-record ci-first">🥇 First: ${escapeHtml(first.holder_name)}</div>` : "";
+      const shinyId = `shiny_${f.item}`;
+      const shinyRec = p.bestiary[shinyId];
+      const shinyLine = shinyRec
+        ? `<div class="ci-record ci-shiny">💫 Shiny caught ×${shinyRec.count.toLocaleString()} — best ${shinyRec.max}cm</div>`
+        : "";
       const rarity = rarityOf(f.item);
-      const glowCls = rec && (rarity === "epic" || rarity === "legendary") ? ` glow-${rarity}` : "";
+      const condBadge = f.condition ? ` ${conditionBadge(f.condition)}` : "";
+      const glowCls = (rec && (rarity === "epic" || rarity === "legendary") ? ` glow-${rarity}` : "") + (shinyRec ? " glow-shiny" : "");
       const item = el("div", "col-item" + (rec ? "" : " uncaught") + glowCls);
       item.innerHTML = `
         <div class="ci-top"><span class="ci-icon">${rec ? iconFor(f.item) : "❔"}</span>
-          <span class="ci-name ${rarityCls(f.item)}"><span class="rar-dot bg-${rarityOf(f.item)}"></span>${rec ? nameFor(f.item) : "???"}</span></div>
+          <span class="ci-name ${rarityCls(f.item)}"><span class="rar-dot bg-${rarityOf(f.item)}"></span>${rec ? nameFor(f.item) : "???"}${condBadge}</span></div>
         <div class="ci-meta">${rec ? `Caught ${rec.count.toLocaleString()} · your best ${rec.max} cm` : `Not yet discovered`}</div>
         ${trophyLine}
+        ${firstLine}
+        ${shinyLine}
       `;
       grid.appendChild(item);
     }
@@ -743,7 +802,7 @@ function renderInventory() {
       (isTool && p.equipped[toolSlot] === id) ||
       (isFood && p.loadout.food === id) || (isDrink && p.loadout.drink === id);
     const rarity = rarityOf(id);
-    const glowCls = rarity === "epic" || rarity === "legendary" ? ` glow-${rarity}` : "";
+    const glowCls = (rarity === "epic" || rarity === "legendary" ? ` glow-${rarity}` : "") + (d.shiny ? " glow-shiny" : "");
     const item = el("div", "inv-item" + (equipped ? " equipped" : "") + glowCls);
     item.title = valueFor(id) != null ? `${nameFor(id)} — sells for 🪙${valueFor(id)}` : nameFor(id);
     const plus = isRod ? (p.enhancements[id] || 0) : 0;
@@ -1026,7 +1085,8 @@ function highestMilestone(from, to) {
 
 function handleSummary(summary) {
   if (!summary) return;
-  const hasNews = summary.completions > 0 || (summary.levelUps || []).length || (summary.notableCatches || []).length || summary.guildLevelUp || (summary.guildMilestones || []).length;
+  const hasNews = summary.completions > 0 || (summary.levelUps || []).length || (summary.notableCatches || []).length ||
+    (summary.shinyCatches || []).length || (summary.firsts || []).length || summary.guildLevelUp || (summary.guildMilestones || []).length;
   if (state.pendingWelcome) {
     // First sync after connecting (may include a long offline catch-up) — fold
     // everything into one recap instead of firing a flurry of live celebrations.
@@ -1039,6 +1099,8 @@ function handleSummary(summary) {
   // both of you see the exact same fanfare at the same time — not handled here.
   for (const lv of summary.levelUps || []) celebrateLevelUp(lv);
   for (const c of summary.notableCatches || []) celebrateCatch(c);
+  for (const s of summary.shinyCatches || []) celebrateShiny(s);
+  for (const f of summary.firsts || []) celebrateFirst(f);
   for (const a of summary.newAchievements || []) {
     sfxAchievement();
     toast(`🏆 ${a.icon} ${a.name} unlocked! +🪙${a.coins}`);
@@ -1068,6 +1130,14 @@ function showWelcome(summary) {
     .map((c) => `<span class="tag-item r-${c.rarity}">${iconFor(c.item)} ${nameFor(c.item)} (${c.size}cm)</span>`)
     .join(" ");
   const notableHtml = notable ? `<div class="wb-row"><b>✨ Notable catches!</b> ${notable}</div>` : "";
+  const shinies = (summary.shinyCatches || [])
+    .map((c) => `<span class="tag-item r-legendary">💫 ${nameFor(c.item)} (${c.size}cm)</span>`)
+    .join(" ");
+  const shinyHtml = shinies ? `<div class="wb-row"><b>💫 Shiny catches!</b> ${shinies}</div>` : "";
+  const firsts = (summary.firsts || [])
+    .map((f) => `<span class="tag-item">🥇 ${nameFor(f.item)}</span>`)
+    .join(" ");
+  const firstsHtml = firsts ? `<div class="wb-row"><b>🥇 First to catch!</b> ${firsts}</div>` : "";
   const guildHtml = summary.guildLevelUp
     ? `<div class="wb-row">🏛️ <b>Anglers' Guild reached Level ${summary.guildLevelUp.to}!</b></div>`
     : "";
@@ -1082,6 +1152,8 @@ function showWelcome(summary) {
       <div class="wb-row">${itemsHtml}</div>
       ${newSp}
       ${notableHtml}
+      ${shinyHtml}
+      ${firstsHtml}
       ${levelHtml}
       ${guildHtml}
       ${milestoneHtml}
@@ -1119,6 +1191,16 @@ function celebrateCatch(c) {
   const tag = legendary ? "🌟 LEGENDARY CATCH" : "✨ Epic catch";
   showFanfare(`${tag}<br><span class="ff-sub">${iconFor(c.item)} ${nameFor(c.item)} — ${c.size}cm</span>`, `r-${c.rarity}`, legendary ? 4500 : 3200);
   notify(tag, `${nameFor(c.item)} — ${c.size}cm`, "catch");
+}
+function celebrateShiny(c) {
+  sfxShiny();
+  burstConfetti();
+  showFanfare(`💫 SHINY CATCH!<br><span class="ff-sub">${iconFor(c.item)} ${nameFor(c.item)} — ${c.size}cm</span>`, "shiny", 4800);
+  notify("💫 Shiny catch!", `${nameFor(c.item)} — ${c.size}cm`, "shiny");
+}
+function celebrateFirst(f) {
+  toast(`🥇 First ever to catch ${iconFor(f.item)} ${nameFor(f.item)}!`);
+  notify("🥇 First catch!", `You're the first to land ${nameFor(f.item)}.`, "first");
 }
 function celebrateGuildLevelUp(g) {
   sfxGuild();

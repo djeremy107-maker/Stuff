@@ -323,6 +323,37 @@ input:focus { outline: none; border-color: var(--accent); }
 .stat.buff .muted { color: var(--muted); }
 .stat.buff.drink { color: var(--xp); border-color: var(--xp); }
 
+/* ---------- Shared world clock ---------- */
+.stat.world { background: var(--bg-3); border: 1px solid var(--line); border-radius: 8px; padding: 3px 10px; font-size: .82rem; }
+
+/* ---------- Weather/time exclusive fish ---------- */
+.cond-badge { font-size: .78rem; }
+.tag-item.exclusive-on { border: 1px solid var(--accent); box-shadow: 0 0 6px rgba(108,201,160,.4); }
+.tag-item.exclusive-off { opacity: .55; }
+
+/* ---------- Firsts board ---------- */
+.ci-first { color: var(--xp); font-size: .76rem; margin-top: 2px; font-weight: 600; }
+.ci-shiny { color: #f0b866; font-size: .76rem; margin-top: 2px; font-weight: 600; }
+
+/* ---------- Shiny glow (a chase variant, distinct from rarity glow) ---------- */
+@keyframes glow-pulse-shiny {
+  0%   { box-shadow: 0 0 8px 0 rgba(240,184,102,.5); border-color: rgba(240,184,102,.7); }
+  33%  { box-shadow: 0 0 16px 3px rgba(108,201,160,.55); border-color: rgba(108,201,160,.8); }
+  66%  { box-shadow: 0 0 16px 3px rgba(108,156,224,.55); border-color: rgba(108,156,224,.8); }
+  100% { box-shadow: 0 0 8px 0 rgba(240,184,102,.5); border-color: rgba(240,184,102,.7); }
+}
+.glow-shiny { animation: glow-pulse-shiny 3s linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .glow-shiny { animation: none; box-shadow: 0 0 10px 1px rgba(240,184,102,.5); }
+}
+
+.fanfare.shiny {
+  border-color: #f0b866;
+  background: linear-gradient(90deg, rgba(240,184,102,.15), rgba(108,201,160,.15), rgba(108,156,224,.15));
+  color: #f0b866;
+  box-shadow: 0 12px 50px rgba(240,184,102,.35);
+}
+
 /* ---------- Bank ---------- */
 .bank-sub { font-size: .95rem; color: var(--muted); margin: 6px 0 10px; }
 

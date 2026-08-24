@@ -7,7 +7,7 @@ rods, and level up a shared **Anglers' Guild** together.
 
 Built for two people (you + your girlfriend), and designed to keep growing.
 
-## What's in it (v1.1)
+## What's in it (v1.2)
 
 - **6 fishing zones** — Backyard Pond → Riverbank → Misty Lake → Coral Harbor →
   Deep Sea → Abyssal Trench, each unlocking with your Fishing level.
@@ -96,6 +96,20 @@ Built for two people (you + your girlfriend), and designed to keep growing.
 - **A finishing coat** — a subtle drifting-bubble ambiance on the login screen,
   a pulsing glow on epic/legendary catches in your Collection and Inventory,
   and a shimmer sweep on the active-action progress bar.
+- **Shiny catches** 💫 — any fish has a ~1-in-450 chance to bite as a shiny
+  variant: same species, far rarer, worth ~15× as much, with its own glowing
+  entry in your Collection. A shiny still fills in the regular species' entry
+  too — no "not yet discovered" for a fish you've only ever caught shiny.
+- **A living sky** 🌅 — a shared clock (visible in the topbar) cycles through
+  dawn/day/dusk/night and clear/rain/storm/fog for both of you at once. A
+  handful of species only bite under the right sky — Storm Runner in a
+  Riverbank storm, Moonlit Koi on the Lake at night, Sunrise Snapper at dawn
+  in the Harbor, Fogbound Ray in a Deep Sea fog, and the Void Wraith in the
+  Abyss only when it's a stormy night. Zone cards show which of tonight's
+  catches are actually biting right now.
+- **A firsts board** 🥇 — whoever lands a shiny or a weather/time exclusive
+  first gets permanent credit on the Collection page, right next to the
+  Trophy Hall's biggest-size record — a second flex axis alongside size.
 
 ## Run it locally
 
@@ -141,6 +155,8 @@ src/
     gameData.ts   # all fish, zones, rods, bait, recipes, shop (edit me to add content!)
   leveling.ts     # XP curve
   engine.ts       # offline progress, catch rolls, bestiary, guild, economy
+  world.ts        # the shared time-of-day/weather clock (pure function of real time)
+  firsts.ts       # firsts board (first-ever shiny/exclusive catch per species)
   auth.ts         # register / login / sessions
   db.ts           # SQLite schema (+ shared guild table)
   server.ts       # Express REST + WebSocket + tick loop

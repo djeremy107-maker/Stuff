@@ -40,8 +40,10 @@ import { loadBank, saveBank, deposit, withdraw } from "./bank.js";
 import { boathouseInfo, upgradeRoom, tickBaitGarden } from "./boathouse.js";
 import { contributeToPurse } from "./purse.js";
 import { allRecords } from "./records.js";
+import { allFirsts } from "./firsts.js";
 import { noticeBoardInfo, deliverOrder, buyWithMarks } from "./noticeBoard.js";
 import { startEvents, getActiveEvent } from "./events.js";
+import { worldStateAt } from "./world.js";
 import { levelForXp } from "./leveling.js";
 
 const TOOL_SLOTS = new Set(["toolForaging", "toolCrafting", "toolCooking"]);
@@ -148,9 +150,23 @@ function broadcastRecords() {
 function broadcastNoticeBoard() {
   broadcast({ type: "notice_board", ...noticeBoardInfo() });
 }
+function broadcastFirsts() {
+  broadcast({ type: "firsts", firsts: allFirsts() });
+}
 
 // Live hotspot events — rotate a boosted zone and tell everyone.
 startEvents((event) => broadcast({ type: "event", event }));
+
+// The shared world clock (time of day / weather) — a pure function of real
+// time, so nothing needs storing; just tell everyone when the phase changes.
+let lastWorld = worldStateAt();
+setInterval(() => {
+  const w = worldStateAt();
+  if (w.time !== lastWorld.time || w.weather !== lastWorld.weather) {
+    lastWorld = w;
+    broadcast({ type: "world", ...w });
+  }
+}, 15_000);
 
 // The Bait Garden (once built) passively grows worms & grubs into the shared
 // Bank, independent of any one player's session.
@@ -220,6 +236,17 @@ function announceSummary(p: PlayerState, summary: ProgressSummary) {
     systemMsg(p.userId, `🎖️ Guild milestone reached — ${m.icon} ${m.name}! +${m.marks} Guild Marks`);
     broadcast({ type: "celebration", kind: "guildMilestone", data: m });
   }
+  for (const s of summary.shinyCatches) {
+    const def = gameData.items[s.item];
+    const label = def ? `${def.icon} ${def.name}` : s.item;
+    systemMsg(p.userId, `💫 ${p.name} hooked a SHINY catch — ${label} (${s.size}cm)!`, "legendary");
+  }
+  for (const f of summary.firsts) {
+    const def = gameData.items[f.item];
+    const label = def ? `${def.icon} ${def.name}` : f.item;
+    systemMsg(p.userId, `🥇 ${p.name} is the first to ever catch ${label}!`);
+  }
+  if (summary.firsts.length) broadcastFirsts();
 }
 
 // ---- Tick ----
@@ -265,6 +292,8 @@ wss.on("connection", (ws, req) => {
   ws.send(JSON.stringify({ type: "boathouse", ...boathouseInfo() }));
   ws.send(JSON.stringify({ type: "records", records: allRecords() }));
   ws.send(JSON.stringify({ type: "notice_board", ...noticeBoardInfo() }));
+  ws.send(JSON.stringify({ type: "world", ...worldStateAt() }));
+  ws.send(JSON.stringify({ type: "firsts", firsts: allFirsts() }));
   broadcastPresence();
 
   ws.on("message", (raw) => {

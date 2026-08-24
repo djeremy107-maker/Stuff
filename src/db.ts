@@ -74,7 +74,16 @@ db.exec(`
     orders_json  TEXT NOT NULL DEFAULT '[]',
     refreshed_at INTEGER NOT NULL DEFAULT 0
   );
-  INSERT OR IGNORE INTO notice_board (id, orders_json, refreshed_at) VALUES (1, '[]', 0);`);
+  INSERT OR IGNORE INTO notice_board (id, orders_json, refreshed_at) VALUES (1, '[]', 0);
+
+  -- Firsts board: whoever catches a species first (in practice, scoped to
+  -- shiny variants and weather/time exclusives) gets permanent credit.
+  CREATE TABLE IF NOT EXISTS firsts (
+    species        TEXT PRIMARY KEY,
+    holder_user_id INTEGER NOT NULL,
+    holder_name    TEXT NOT NULL,
+    ts             INTEGER NOT NULL
+  );`);
 
 // Lightweight migrations for databases created before a column existed.
 function ensureColumn(table: string, column: string, ddl: string) {

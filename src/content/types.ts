@@ -5,6 +5,12 @@ export type SkillId = "fishing" | "cooking" | "crafting" | "foraging";
 
 export type Rarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
 
+// The shared world clock — a pure function of real time, so both players
+// always see the same sky and any past moment (offline catch-up included)
+// can be evaluated exactly. See src/world.ts.
+export type TimePhase = "dawn" | "day" | "dusk" | "night";
+export type WeatherPhase = "clear" | "rain" | "storm" | "fog";
+
 export type ItemCategory = "fish" | "material" | "bait" | "rod" | "reel" | "line" | "tool" | "protection" | "dish" | "drink" | "treasure";
 
 export interface SkillDef {
@@ -25,6 +31,9 @@ export interface ItemDef {
   rarity?: Rarity;
   sizeMin?: number; // cm
   sizeMax?: number; // cm
+  shiny?: boolean; // a 1-in-N chase variant of another species, rolled independently of rarity
+  shinyOf?: string; // the base species id this shiny variant mirrors
+  exclusive?: boolean; // only appears when the shared world clock matches its zone condition
 
   // Rod-only (equipment; every rod is enhanceable — see PlayerState.enhancements)
   rodSpeedMult?: number; // multiplies fishing time (lower = faster)
@@ -63,7 +72,7 @@ export interface ZoneDef {
   baseTimeSec: number; // seconds per cast at base
   xpMult: number; // multiplies each species' rarity XP
   blurb: string;
-  fish: { item: string; weight: number }[];
+  fish: { item: string; weight: number; condition?: { time?: TimePhase[]; weather?: WeatherPhase[] } }[];
 }
 
 // Cooking / crafting / foraging actions (non-fishing).

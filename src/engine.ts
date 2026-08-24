@@ -5,6 +5,8 @@ import { levelForXp, levelProgress } from "./leveling.js";
 import { getActiveEvent } from "./events.js";
 import { boathouseSkillEfficiency, boathouseRareBonus, boathouseEnhanceBonus } from "./boathouse.js";
 import { checkAndSetRecord } from "./records.js";
+import { checkAndSetFirst } from "./firsts.js";
+import { worldStateAt } from "./world.js";
 
 // Tool-equipped support skills (foraging/crafting/cooking each get one tool slot).
 type ToolSkill = "foraging" | "crafting" | "cooking";
@@ -17,6 +19,10 @@ const TOOL_SLOT: Record<ToolSkill, "toolForaging" | "toolCrafting" | "toolCookin
 // Cap offline processing so nobody returns to millions of years of loot.
 const OFFLINE_CAP_MS = Number(process.env.OFFLINE_CAP_HOURS ?? 24) * 3600 * 1000;
 const SIM_GUARD = 500000;
+
+// Odds a fish catch upgrades to its shiny variant — a chase chance, not a
+// rarity roll, so a common shiny is just as likely as a legendary shiny.
+const SHINY_CHANCE = 1 / 450;
 
 // --------------------------------------------------------------------------
 // Shared Guild progression (coop incremental)
@@ -334,13 +340,21 @@ function evaluateAchievements(p: PlayerState, summary: ProgressSummary) {
   }
 }
 
-// Weighted species pick, with rareBonus shifting toward rarer fish.
-function rollSpecies(zoneId: string, rareBonus: number): string | null {
+// Weighted species pick, with rareBonus shifting toward rarer fish. Entries
+// with a `condition` (weather/time exclusives) only enter the pool when the
+// shared world clock at `clock` matches — evaluated at that exact moment, so
+// offline catch-up correctly reflects whatever the sky was doing at the time.
+function rollSpecies(zoneId: string, rareBonus: number, clock: number): string | null {
   const zone = zonesById.get(zoneId);
   if (!zone) return null;
+  const world = worldStateAt(clock);
   let total = 0;
   const weights: { item: string; w: number }[] = [];
   for (const f of zone.fish) {
+    if (f.condition) {
+      if (f.condition.time && !f.condition.time.includes(world.time)) continue;
+      if (f.condition.weather && !f.condition.weather.includes(world.weather)) continue;
+    }
     const rarity = gameData.items[f.item]?.rarity ?? "common";
     const rank = gameData.rarityRank[rarity];
     const mult = rank === 0 ? 1 : 1 + rareBonus * (1 + rank);
@@ -379,6 +393,8 @@ export interface ProgressSummary {
   levelUps: { skill: string; from: number; to: number }[];
   notableCatches: { item: string; rarity: string; size: number }[]; // epic/legendary
   newRecords: { item: string; size: number; previousHolder: string | null }[]; // Trophy Hall
+  shinyCatches: { item: string; size: number }[]; // 1-in-450 chase variants
+  firsts: { item: string; size: number }[]; // first-ever catch of a shiny/exclusive species
   guildLevelUp: { from: number; to: number } | null;
   guildMilestones: { id: string; name: string; icon: string; marks: number }[];
   stopped?: "no_inputs";
@@ -470,7 +486,8 @@ function promoteNext(p: PlayerState): boolean {
 export function processElapsed(p: PlayerState, now: number): ProgressSummary {
   const summary: ProgressSummary = {
     completions: 0, bonus: 0, xpGained: {}, itemsGained: {}, coinsGained: 0,
-    newSpecies: [], newAchievements: [], levelUps: [], notableCatches: [], newRecords: [], guildLevelUp: null, guildMilestones: [],
+    newSpecies: [], newAchievements: [], levelUps: [], notableCatches: [], newRecords: [],
+    shinyCatches: [], firsts: [], guildLevelUp: null, guildMilestones: [],
   };
   const addItemSum = (id: string, q: number) => (summary.itemsGained[id] = (summary.itemsGained[id] || 0) + q);
   const addXpSum = (s: string, x: number) => (summary.xpGained[s] = (summary.xpGained[s] || 0) + x);
@@ -484,8 +501,16 @@ export function processElapsed(p: PlayerState, now: number): ProgressSummary {
 
   // Grant one full catch's rewards (used by the timed cast and by efficiency procs).
   const doFish = (zone: (typeof gameData.zones)[number], rareBonus: number, xpMult: number) => {
-    const species = rollSpecies(zone.id, rareBonus);
-    if (!species) return;
+    const rolled = rollSpecies(zone.id, rareBonus, clock);
+    if (!rolled) return;
+    // Independent chase roll: any fish catch can upgrade to its shiny variant.
+    let species = rolled;
+    let shiny = false;
+    const rolledDef = gameData.items[rolled];
+    if (rolledDef?.category === "fish" && Math.random() < SHINY_CHANCE) {
+      const shinyId = `shiny_${rolled}`;
+      if (gameData.items[shinyId]) { species = shinyId; shiny = true; }
+    }
     addItem(p, species, 1);
     addItemSum(species, 1);
     const def = gameData.items[species];
@@ -501,9 +526,26 @@ export function processElapsed(p: PlayerState, now: number): ProgressSummary {
       summary.notableCatches.push({ item: species, rarity, size });
       if (rarity === "legendary") legendaryCatches++;
     }
+    if (shiny) {
+      summary.shinyCatches.push({ item: species, size });
+      // A shiny catch is still a catch of the base species — same convention
+      // as a shiny Pokémon still filling its regular Pokédex entry — so it
+      // shouldn't leave "Moonfish" reading "not yet discovered" just because
+      // every Moonfish you've hooked so far happened to be shiny ones.
+      const baseRec = p.bestiary[rolled];
+      if (!baseRec) { p.bestiary[rolled] = { count: 1, max: size }; summary.newSpecies.push(rolled); }
+      else { baseRec.count++; if (size > baseRec.max) baseRec.max = size; }
+    }
     if (def?.category === "fish" && size > 0) {
       const rec = checkAndSetRecord(species, size, p.userId, p.name);
       if (rec.isRecord) summary.newRecords.push({ item: species, size, previousHolder: rec.previousHolder });
+      // Firsts are scoped to shiny/exclusive species only — brand-new content
+      // nobody could have caught before this shipped, so "first" is always
+      // honestly earned rather than an accident of who reconnects first.
+      if (def.shiny || def.exclusive) {
+        const first = checkAndSetFirst(species, p.userId, p.name);
+        if (first.isFirst) summary.firsts.push({ item: species, size });
+      }
     }
     const xp = Math.round(gameData.rarityXp[rarity] * zone.xpMult * xpMult);
     grantXp(p, "fishing", xp);

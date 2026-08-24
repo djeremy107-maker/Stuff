@@ -185,8 +185,8 @@ Phase 1 is complete.
       is a one-time Marks payout, celebrated through the existing Tier 1
       fanfare/broadcast pipeline (a milestone is just another kind of
       `ProgressSummary` event).
-- [ ] Collection long-tail (shiny variants, weather/time exclusives) — not
-      started; still the eventual replacement for a combat pillar.
+- [x] Collection long-tail (shiny variants, weather/time exclusives) — see
+      Tier 3 below; this was the eventual replacement for a combat pillar.
 
 ### Engagement research (see `docs/RESEARCH_ENGAGEMENT.md`)
 
@@ -220,9 +220,44 @@ no fake near-misses, no loss-based streaks.
 **Tier 2 — Zone Mastery** (per-zone 1–50 level fed by catches in that zone,
 Melvor's per-action progression layer, fishing-flavored) — not started.
 
-**Tier 3 — Chase content**: shiny 1/500 variants, a records & firsts board
-(shared, stealable), collection-completion rewards, quiet bad-luck protection
-on legendaries — not started.
+**Tier 3 — Chase content (complete):**
+- [x] **Shiny variants** — `SHINY_CHANCE = 1/450` in `engine.ts`, rolled
+      independently of the rarity roll on every real fish catch (not just
+      the timed cast — efficiency-proc bonus catches roll too, since they
+      all funnel through the same `doFish` closure). Shiny items are
+      generated automatically in `gameData.ts` for every fish (`shiny_<id>`,
+      same rarity/size range, ~15× value) rather than hand-authored, so new
+      fish added later get a shiny for free. A shiny catch also credits the
+      *base* species' bestiary entry (same convention as a shiny Pokémon
+      still filling the regular Pokédex slot) — otherwise a fish whose only
+      catches were shiny would read "not yet discovered" forever, which
+      would be actively misleading.
+- [x] **Weather & time-of-day exclusives** — `src/world.ts` is a shared
+      clock: `timeOfDayAt(clock)`/`weatherAt(clock)` are pure functions of
+      an epoch-ms timestamp (dawn/day/dusk/night on a 3h cycle, clear/rain/
+      storm/fog on a 35min cycle, weighted toward clear). Pure-function is
+      the load-bearing design choice: both players always see the same sky
+      with nothing to persist, *and* any past instant — including deep
+      inside an offline catch-up window — evaluates exactly the same way
+      live or replayed. Five new fish (`storm_runner`, `moonlit_koi`,
+      `sunrise_snapper`, `fogbound_ray`, `void_wraith`) carry a `condition`
+      on their zone-table entry (`{ time?, weather? }`); `rollSpecies` in
+      `engine.ts` now takes the in-progress `clock` and skips
+      condition-gated entries that don't match `worldStateAt(clock)` at
+      that exact moment. The topbar shows the current sky; zone cards tag
+      conditional catches with a dim/bright state depending on whether
+      they're biting right now.
+- [x] **Firsts board** — a second flex axis alongside the Trophy Hall's
+      size record: whoever lands a species first gets permanent credit
+      (`src/firsts.ts`, `INSERT OR IGNORE` keyed by species so a
+      simultaneous catch can't double-win). Deliberately scoped to shiny
+      and weather/time-exclusive species only, *not* every species — those
+      are the only catches nobody could have made before this shipped, so
+      "first" is always honestly earned. Crediting ordinary pre-existing
+      species (30-odd fish both players discovered months ago) would have
+      handed an arbitrary, unearned "first" to whoever's tick happened to
+      run first on deploy day.
+- [ ] Quiet bad-luck protection on legendaries — not started.
 
 **Tier 4 — Identity & titles**: equippable titles, cosmetic skill-99 badges,
 total-level frames — not started.

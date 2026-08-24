@@ -17,6 +17,7 @@ const itemList: ItemDef[] = [
   { id: "brown_trout", name: "Brown Trout", icon: "🐟", category: "fish", rarity: "uncommon", value: 9, sizeMin: 25, sizeMax: 55 },
   { id: "rainbow_trout", name: "Rainbow Trout", icon: "🌈", category: "fish", rarity: "rare", value: 22, sizeMin: 30, sizeMax: 65 },
   { id: "river_sturgeon", name: "River Sturgeon", icon: "🐊", category: "fish", rarity: "epic", value: 90, sizeMin: 80, sizeMax: 200 },
+  { id: "storm_runner", name: "Storm Runner", icon: "🌩️", category: "fish", rarity: "rare", value: 35, sizeMin: 35, sizeMax: 70, exclusive: true },
 
   // ---- Fish: Misty Lake ----
   { id: "lake_pike", name: "Lake Pike", icon: "🐟", category: "fish", rarity: "common", value: 8, sizeMin: 40, sizeMax: 90 },
@@ -25,6 +26,7 @@ const itemList: ItemDef[] = [
   { id: "mirror_carp", name: "Mirror Carp", icon: "🪞", category: "fish", rarity: "rare", value: 40, sizeMin: 30, sizeMax: 70 },
   { id: "moonfish", name: "Moonfish", icon: "🌙", category: "fish", rarity: "epic", value: 120, sizeMin: 20, sizeMax: 45 },
   { id: "lake_leviathan", name: "Lake Leviathan", icon: "🐉", category: "fish", rarity: "legendary", value: 600, sizeMin: 150, sizeMax: 400 },
+  { id: "moonlit_koi", name: "Moonlit Koi", icon: "🎑", category: "fish", rarity: "rare", value: 45, sizeMin: 25, sizeMax: 55, exclusive: true },
 
   // ---- Fish: Coral Harbor ----
   { id: "mackerel", name: "Mackerel", icon: "🐟", category: "fish", rarity: "common", value: 12, sizeMin: 20, sizeMax: 45 },
@@ -32,6 +34,7 @@ const itemList: ItemDef[] = [
   { id: "sea_bass", name: "Sea Bass", icon: "🐟", category: "fish", rarity: "uncommon", value: 28, sizeMin: 30, sizeMax: 70 },
   { id: "yellowfin_tuna", name: "Yellowfin Tuna", icon: "🍣", category: "fish", rarity: "rare", value: 70, sizeMin: 80, sizeMax: 180 },
   { id: "swordfish", name: "Swordfish", icon: "🗡️", category: "fish", rarity: "epic", value: 180, sizeMin: 150, sizeMax: 300 },
+  { id: "sunrise_snapper", name: "Sunrise Snapper", icon: "🌅", category: "fish", rarity: "rare", value: 75, sizeMin: 35, sizeMax: 80, exclusive: true },
 
   // ---- Fish: Deep Sea ----
   { id: "mahi_mahi", name: "Mahi-Mahi", icon: "🐬", category: "fish", rarity: "common", value: 30, sizeMin: 60, sizeMax: 120 },
@@ -39,6 +42,7 @@ const itemList: ItemDef[] = [
   { id: "giant_squid", name: "Giant Squid", icon: "🦑", category: "fish", rarity: "rare", value: 140, sizeMin: 200, sizeMax: 500 },
   { id: "anglerfish", name: "Anglerfish", icon: "🎏", category: "fish", rarity: "epic", value: 320, sizeMin: 20, sizeMax: 60 },
   { id: "kraken_hatchling", name: "Kraken Hatchling", icon: "🐙", category: "fish", rarity: "legendary", value: 1200, sizeMin: 100, sizeMax: 300 },
+  { id: "fogbound_ray", name: "Fogbound Ray", icon: "🌫️", category: "fish", rarity: "rare", value: 150, sizeMin: 100, sizeMax: 220, exclusive: true },
 
   // ---- Fish: Abyssal Trench ----
   { id: "lanternfish", name: "Lanternfish", icon: "🏮", category: "fish", rarity: "common", value: 50, sizeMin: 5, sizeMax: 15 },
@@ -46,6 +50,7 @@ const itemList: ItemDef[] = [
   { id: "ghost_shark", name: "Ghost Shark", icon: "🦈", category: "fish", rarity: "rare", value: 260, sizeMin: 60, sizeMax: 150 },
   { id: "abyssal_serpent", name: "Abyssal Serpent", icon: "🐉", category: "fish", rarity: "epic", value: 600, sizeMin: 300, sizeMax: 800 },
   { id: "ancient_coelacanth", name: "Ancient Coelacanth", icon: "🦴", category: "fish", rarity: "legendary", value: 2500, sizeMin: 100, sizeMax: 250 },
+  { id: "void_wraith", name: "Void Wraith", icon: "👻", category: "fish", rarity: "epic", value: 700, sizeMin: 150, sizeMax: 350, exclusive: true },
 
   // ---- Foraging materials ----
   { id: "worm", name: "Worm", icon: "🪱", category: "material", value: 1 },
@@ -114,6 +119,27 @@ const itemList: ItemDef[] = [
   { id: "blessed_lacquer", name: "Blessed Lacquer", icon: "🧴", category: "protection", value: 80 },
 ];
 
+// ---- Shiny variants ----
+// A ~1-in-450 chase variant of every fish, rolled independently of rarity —
+// mirrors the base species' size range and rarity classification (so it
+// still counts for e.g. the "catch a legendary" achievement) but is a
+// distinct, separately-collected, far more valuable catch. Generated here
+// so every zone's fish automatically gets one with no per-species upkeep.
+for (const base of itemList.filter((it) => it.category === "fish")) {
+  itemList.push({
+    id: `shiny_${base.id}`,
+    name: `Shiny ${base.name}`,
+    icon: base.icon,
+    category: "fish",
+    rarity: base.rarity,
+    value: Math.max(50, Math.round((base.value ?? 1) * 15)),
+    sizeMin: base.sizeMin,
+    sizeMax: base.sizeMax,
+    shiny: true,
+    shinyOf: base.id,
+  });
+}
+
 const items: Record<string, ItemDef> = {};
 for (const it of itemList) items[it.id] = it;
 
@@ -154,6 +180,7 @@ export const gameData: GameData = {
         { item: "brown_trout", weight: 260 },
         { item: "rainbow_trout", weight: 55 },
         { item: "river_sturgeon", weight: 10 },
+        { item: "storm_runner", weight: 45, condition: { weather: ["storm"] } },
       ],
     },
     {
@@ -166,6 +193,7 @@ export const gameData: GameData = {
         { item: "mirror_carp", weight: 55 },
         { item: "moonfish", weight: 12 },
         { item: "lake_leviathan", weight: 2 },
+        { item: "moonlit_koi", weight: 50, condition: { time: ["night"] } },
       ],
     },
     {
@@ -177,6 +205,7 @@ export const gameData: GameData = {
         { item: "sea_bass", weight: 240 },
         { item: "yellowfin_tuna", weight: 55 },
         { item: "swordfish", weight: 12 },
+        { item: "sunrise_snapper", weight: 50, condition: { time: ["dawn"] } },
       ],
     },
     {
@@ -188,6 +217,7 @@ export const gameData: GameData = {
         { item: "giant_squid", weight: 55 },
         { item: "anglerfish", weight: 12 },
         { item: "kraken_hatchling", weight: 2 },
+        { item: "fogbound_ray", weight: 50, condition: { weather: ["fog"] } },
       ],
     },
     {
@@ -199,6 +229,7 @@ export const gameData: GameData = {
         { item: "ghost_shark", weight: 55 },
         { item: "abyssal_serpent", weight: 12 },
         { item: "ancient_coelacanth", weight: 2 },
+        { item: "void_wraith", weight: 15, condition: { time: ["night"], weather: ["storm"] } },
       ],
     },
   ],
