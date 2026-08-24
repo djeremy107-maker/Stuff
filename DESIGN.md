@@ -72,7 +72,38 @@ live tick and offline catch-up identically.
 
 ## Roadmap
 
-### Near term
+### MWI-inspired redesign (see `docs/DESIGN_REVIEW_MWI.md`)
+
+Following the Fable 5 review. Decision: **collection-focused long tail, no combat**
+— we replace the review's "Legendary Expeditions" pillar with deeper collection
+content (shiny/variant fish, weather/time-of-day exclusives).
+
+**Phase 1 — Levels Matter (in progress):**
+- [x] **Efficiency system** — every level above an action's requirement gives a
+      per-completion chance to instantly repeat for free extra output (+1%/level,
+      plus a shared Guild efficiency bonus past Guild level 20). Slots into the
+      per-completion loop; bonus completions cost no time and count toward queue
+      targets.
+- [x] **Level speed factor** — a small innate speed bonus (−0.25%/level over req,
+      capped −15%) on fishing and support skills.
+- [x] **XP/Guild pacing retune** — zone `xpMult` resteps to 1/2.2/4.5/9/18/32;
+      the Guild curve is now a growing cumulative bar to level 60 (speed to +15%,
+      then efficiency past level 20).
+- [x] **Treasure ≠ fish** — the Old Boot no longer ticks the Guild or catch-total
+      achievements.
+- [ ] **Consumable loadout** — food/drink slots that auto-consume from a stack;
+      dish durations retuned to 30–90 min; brewed "teas" from Foraging.
+- [ ] **Lure slot** — equip a specific bait instead of the auto-best toggle.
+
+**Phase 2 — Gear & Home:** tackle slots + tools, rod enhancement (+1…+10, cozy),
+the shared **Boathouse** (coop house upgrades = main coin/material sink, includes
+passive Bait Garden and a Trophy Hall), shared purse + gifting, shop expansion.
+
+**Phase 3 — Harbor Life:** Merchant's Dock buy-orders + Notice Board + Guild Marks,
+Guild shared milestones; then the collection long-tail (shiny variants, weather/
+time exclusives) in place of combat.
+
+### Near term (original list)
 - [x] **Meal buffs** — eat a cooked dish for a timed boost to cast speed and rare
       chance instead of only selling it. Buff is tracked per-player with an
       absolute expiry, applied per-cast (so it's exact across the offline window

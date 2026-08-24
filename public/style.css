@@ -142,6 +142,8 @@ input:focus { outline: none; border-color: var(--accent); }
 .card.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .card .c-title { font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .card .c-meta { color: var(--muted); font-size: .82rem; line-height: 1.5; }
+.card .c-meta.eff { color: var(--accent-2); }
+.card .c-meta.eff .muted { color: var(--muted); }
 .card .c-io { font-size: .82rem; }
 .card .c-io .tag-item { display: inline-flex; align-items: center; gap: 3px; background: var(--bg-3); border-radius: 6px; padding: 1px 6px; margin: 2px 3px 0 0; }
 .card button.do { margin-top: auto; background: var(--accent); border: none; color: #0d1512; font-weight: 600; border-radius: 8px; padding: 8px; }

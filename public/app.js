@@ -127,6 +127,14 @@ const valueFor = (id) => itemDef(id).value;
 const rarityOf = (id) => itemDef(id).rarity || "common";
 const rarityCls = (id) => `r-${rarityOf(id)}`;
 
+// Client-side mirror of the engine's efficiency formula, for display.
+function effInfo(skillId, levelReq) {
+  const lvl = state.player?.skills?.[skillId]?.level ?? 1;
+  const above = Math.max(0, lvl - levelReq);
+  const guildEff = state.guild?.efficiencyBonus || 0;
+  return { above, pct: Math.round((0.01 * above + guildEff) * 100) };
+}
+
 function bestBaitInBag() {
   let best = null;
   for (const [id, qty] of Object.entries(state.player.inventory)) {
@@ -283,10 +291,13 @@ function zoneCard(z) {
     .sort((a, b) => RARITY_ORDER.indexOf(rarityOf(a.item)) - RARITY_ORDER.indexOf(rarityOf(b.item)))
     .map((f) => `<span class="tag-item ${rarityCls(f.item)}">${iconFor(f.item)} ${nameFor(f.item)}</span>`)
     .join("");
+  const eff = effInfo("fishing", z.levelReq);
+  const effLine = !locked && eff.pct > 0 ? `<div class="c-meta eff">⚡ ${eff.pct}% efficiency <span class="muted">(bonus catches from your level)</span></div>` : "";
   card.innerHTML = `
     <div class="c-title">${z.icon} ${z.name}${hot ? ` <span class="hot-badge">🔥 HOTSPOT</span>` : ""}</div>
     <div class="c-meta">${z.blurb}</div>
     <div class="c-meta">Requires Fishing ${z.levelReq} · ~${z.baseTimeSec}s/cast · ${z.xpMult}× XP</div>
+    ${effLine}
     <div class="c-io">Catches: <div class="zone-fish">${fishTags}</div></div>
   `;
   card.appendChild(cardButtons(active, locked, `🔒 Fishing ${z.levelReq}`, "Fish here", "fish", z.id));
@@ -336,11 +347,14 @@ function actionCard(a, skill) {
   const inIcons = a.inputs.length
     ? `<div class="c-io">Needs: ${a.inputs.map((i) => `<span class="tag-item">${iconFor(i.item)} ${i.qty}× ${nameFor(i.item)} <b>(${p.inventory[i.item] || 0})</b></span>`).join("")}</div>`
     : "";
+  const eff = effInfo(skill.id, a.levelReq);
+  const effLine = !locked && eff.pct > 0 ? `<div class="c-meta eff">⚡ ${eff.pct}% efficiency <span class="muted">(bonus output from your level)</span></div>` : "";
   card.innerHTML = `
     <div class="c-title">${a.name}</div>
     <div class="c-meta">Requires level ${a.levelReq} · ${a.durationSec}s · ${a.xp} xp</div>
     ${inIcons}
     <div class="c-io">Makes: ${outIcons}</div>
+    ${effLine}
   `;
   card.appendChild(cardButtons(active, locked, `🔒 Level ${a.levelReq}`, "Start", "action", a.id));
   return card;
@@ -548,7 +562,7 @@ function renderGuild() {
     <div class="g-level">Guild Level ${g.level}${g.level >= g.maxLevel ? " (max)" : ""}</div>
     <div class="g-sub">${g.total.toLocaleString()} fish caught together</div>
     <div class="g-bar"><span style="width:${pct}%"></span></div>
-    <div class="g-perk">🎣 +${Math.round(g.speedBonus * 100)}% faster casts for both of you${g.needed > 0 ? ` · ${g.needed - g.into} to next level` : ""}</div>
+    <div class="g-perk">🎣 +${Math.round(g.speedBonus * 100)}% faster casts for both${g.efficiencyBonus > 0 ? ` · ⚡ +${Math.round(g.efficiencyBonus * 100)}% efficiency` : ""}${g.needed > 0 ? ` · ${(g.needed - g.into).toLocaleString()} to next level` : ""}</div>
   `;
 }
 
@@ -660,7 +674,7 @@ function showWelcome(summary) {
   overlay.innerHTML = `
     <div class="modal">
       <h2>🎣 While you were away…</h2>
-      <div class="wb-row"><b>${summary.completions.toLocaleString()}</b> things happened.</div>
+      <div class="wb-row"><b>${summary.completions.toLocaleString()}</b> things happened${summary.bonus > 0 ? ` <span class="muted">(incl. ${summary.bonus.toLocaleString()} bonus from ⚡ efficiency)</span>` : ""}.</div>
       <div class="wb-row">${itemsHtml}</div>
       ${newSp}
       <div class="wb-row muted">${xpHtml}${summary.coinsGained ? ` · 🪙 +${summary.coinsGained.toLocaleString()}` : ""}</div>

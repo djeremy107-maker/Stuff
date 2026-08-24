@@ -110,7 +110,7 @@ export const gameData: GameData = {
       ],
     },
     {
-      id: "river", name: "Riverbank", icon: "🏞️", levelReq: 10, baseTimeSec: 4, xpMult: 1.6,
+      id: "river", name: "Riverbank", icon: "🏞️", levelReq: 10, baseTimeSec: 4, xpMult: 2.2,
       blurb: "Fast, cold water full of fighting fish.",
       fish: [
         { item: "river_perch", weight: 900 },
@@ -121,7 +121,7 @@ export const gameData: GameData = {
       ],
     },
     {
-      id: "lake", name: "Misty Lake", icon: "🌫️", levelReq: 25, baseTimeSec: 4.5, xpMult: 2.4,
+      id: "lake", name: "Misty Lake", icon: "🌫️", levelReq: 25, baseTimeSec: 4.5, xpMult: 4.5,
       blurb: "Deep and still. Locals say something old lives here.",
       fish: [
         { item: "lake_pike", weight: 850 },
@@ -133,7 +133,7 @@ export const gameData: GameData = {
       ],
     },
     {
-      id: "harbor", name: "Coral Harbor", icon: "⛵", levelReq: 40, baseTimeSec: 5, xpMult: 3.4,
+      id: "harbor", name: "Coral Harbor", icon: "⛵", levelReq: 40, baseTimeSec: 5, xpMult: 9,
       blurb: "Salt air and bigger fish. The sea proper begins here.",
       fish: [
         { item: "mackerel", weight: 850 },
@@ -144,7 +144,7 @@ export const gameData: GameData = {
       ],
     },
     {
-      id: "deep_sea", name: "Deep Sea", icon: "🌊", levelReq: 60, baseTimeSec: 6, xpMult: 5,
+      id: "deep_sea", name: "Deep Sea", icon: "🌊", levelReq: 60, baseTimeSec: 6, xpMult: 18,
       blurb: "Miles from shore over the open blue.",
       fish: [
         { item: "mahi_mahi", weight: 850 },
@@ -155,7 +155,7 @@ export const gameData: GameData = {
       ],
     },
     {
-      id: "abyss", name: "Abyssal Trench", icon: "🕳️", levelReq: 80, baseTimeSec: 7.5, xpMult: 7,
+      id: "abyss", name: "Abyssal Trench", icon: "🕳️", levelReq: 80, baseTimeSec: 7.5, xpMult: 32,
       blurb: "The lightless deep. Only the boldest cast here.",
       fish: [
         { item: "lanternfish", weight: 850 },

@@ -11,8 +11,15 @@ const SIM_GUARD = 500000;
 // --------------------------------------------------------------------------
 // Shared Guild progression (coop incremental)
 // --------------------------------------------------------------------------
-const GUILD_MAX_LEVEL = 25;
-const CATCHES_PER_GUILD_LEVEL = 250;
+const GUILD_MAX_LEVEL = 60;
+
+// Cumulative total catches required to reach each Guild level (growing curve, so
+// the shared bar is a genuine multi-month coop project rather than a few hours).
+const guildCumulative: number[] = [0];
+for (let lvl = 1; lvl <= GUILD_MAX_LEVEL; lvl++) {
+  const needed = Math.round(200 * Math.pow(1.15, lvl - 1));
+  guildCumulative[lvl] = guildCumulative[lvl - 1] + needed;
+}
 
 const selectGuild = db.prepare("SELECT total_catches FROM guild WHERE id = 1");
 const addGuild = db.prepare("UPDATE guild SET total_catches = total_catches + ? WHERE id = 1");
@@ -22,17 +29,32 @@ export function guildTotalCatches(): number {
   return row?.total_catches ?? 0;
 }
 export function guildLevel(total = guildTotalCatches()): number {
-  return Math.min(GUILD_MAX_LEVEL, Math.floor(total / CATCHES_PER_GUILD_LEVEL));
+  let lvl = 0;
+  while (lvl < GUILD_MAX_LEVEL && total >= guildCumulative[lvl + 1]) lvl++;
+  return lvl;
 }
+// Shared cast-speed bonus: +0.5%/level, capped at 15% (reached ~level 30).
 export function guildSpeedBonus(level = guildLevel()): number {
-  return level * 0.01; // up to 25% faster casts, shared by both of you
+  return Math.min(0.15, level * 0.005);
+}
+// Beyond level 20 the Guild also grants shared efficiency, so high levels keep paying.
+export function guildEfficiencyBonus(level = guildLevel()): number {
+  return Math.max(0, level - 20) * 0.002;
 }
 export function guildInfo() {
   const total = guildTotalCatches();
   const level = guildLevel(total);
-  const into = total - level * CATCHES_PER_GUILD_LEVEL;
-  const needed = level >= GUILD_MAX_LEVEL ? 0 : CATCHES_PER_GUILD_LEVEL;
-  return { total, level, maxLevel: GUILD_MAX_LEVEL, into, needed, speedBonus: guildSpeedBonus(level) };
+  const into = total - guildCumulative[level];
+  const needed = level >= GUILD_MAX_LEVEL ? 0 : guildCumulative[level + 1] - guildCumulative[level];
+  return {
+    total,
+    level,
+    maxLevel: GUILD_MAX_LEVEL,
+    into,
+    needed,
+    speedBonus: guildSpeedBonus(level),
+    efficiencyBonus: guildEfficiencyBonus(level),
+  };
 }
 
 // --------------------------------------------------------------------------
@@ -192,11 +214,11 @@ function bestBait(p: PlayerState): { id: string; bonus: number } | null {
 
 function personalCatchTotal(p: PlayerState): number {
   let n = 0;
-  for (const r of Object.values(p.bestiary)) n += r.count;
+  for (const [id, r] of Object.entries(p.bestiary)) if (gameData.items[id]?.category === "fish") n += r.count;
   return n;
 }
 function hasCaughtRarity(p: PlayerState, rarity: string): boolean {
-  return Object.keys(p.bestiary).some((id) => gameData.items[id]?.rarity === rarity);
+  return Object.keys(p.bestiary).some((id) => gameData.items[id]?.category === "fish" && gameData.items[id]?.rarity === rarity);
 }
 
 // Check every not-yet-unlocked achievement; grant rewards for newly met ones.
@@ -246,6 +268,7 @@ function rollSpecies(zoneId: string, rareBonus: number): string | null {
 // --------------------------------------------------------------------------
 export interface ProgressSummary {
   completions: number;
+  bonus: number; // extra completions from efficiency procs
   xpGained: Record<string, number>;
   itemsGained: Record<string, number>;
   coinsGained: number;
@@ -255,17 +278,35 @@ export interface ProgressSummary {
   stopped?: "no_inputs";
 }
 
+// A small innate speed bonus from levels above the requirement (efficiency is the
+// main level lever; this just makes each level-up tick the timer down a touch).
+function levelSpeedFactor(levelsAbove: number): number {
+  return 1 - Math.min(0.15, 0.0025 * Math.max(0, levelsAbove));
+}
+
+// Efficiency: chance(s) to instantly repeat a completion for free extra output.
+// +1% per level above the action's requirement, plus the shared Guild bonus.
+export function efficiencyFor(p: PlayerState, skill: SkillId, levelReq: number): number {
+  return 0.01 * Math.max(0, skillLevel(p, skill) - levelReq) + guildEfficiencyBonus();
+}
+
 // Per-completion duration + rare bonus for a single cast at absolute time `clock`.
 function fishParamsAt(p: PlayerState, zoneId: string, clock: number): { durMs: number; rareBonus: number } {
   const zone = zonesById.get(zoneId)!;
   const rod = p.equipped.rod ? gameData.items[p.equipped.rod] : undefined;
-  const base = zone.baseTimeSec * (rod?.rodSpeedMult ?? 1) * (1 - guildSpeedBonus()) * 1000;
+  const levelsAbove = skillLevel(p, "fishing") - zone.levelReq;
+  const base = zone.baseTimeSec * (rod?.rodSpeedMult ?? 1) * levelSpeedFactor(levelsAbove) * (1 - guildSpeedBonus()) * 1000;
   const event = getActiveEvent();
   const buffed = p.buff && clock < p.buff.expiresAt;
   const eventOn = !!event && event.zoneId === zoneId && clock >= event.startsAt && clock < event.endsAt;
   const durMs = base * (buffed ? p.buff!.speedMult : 1) * (eventOn ? event!.speedMult : 1);
   const rareBonus = (rod?.rodRareBonus ?? 0) + (buffed ? p.buff!.rareBonus : 0) + (eventOn ? event!.rareBonus : 0);
   return { durMs, rareBonus };
+}
+
+// Duration for a support-skill (foraging/crafting/cooking) completion.
+function actionDurMs(p: PlayerState, def: { durationSec: number; skill: SkillId; levelReq: number }): number {
+  return def.durationSec * 1000 * levelSpeedFactor(skillLevel(p, def.skill) - def.levelReq);
 }
 
 function hasInputs(p: PlayerState, def: { inputs: { item: string; qty: number }[] }): boolean {
@@ -278,7 +319,7 @@ function currentDurMs(p: PlayerState, clock = Date.now()): number {
   if (!a) return 1;
   if (a.type === "fish") return fishParamsAt(p, a.refId, clock).durMs;
   const def = actionsById.get(a.refId);
-  return def ? def.durationSec * 1000 : 1;
+  return def ? actionDurMs(p, def) : 1;
 }
 
 function promoteNext(p: PlayerState): boolean {
@@ -292,16 +333,54 @@ function promoteNext(p: PlayerState): boolean {
 }
 
 export function processElapsed(p: PlayerState, now: number): ProgressSummary {
-  const summary: ProgressSummary = { completions: 0, xpGained: {}, itemsGained: {}, coinsGained: 0, newSpecies: [], newAchievements: [] };
+  const summary: ProgressSummary = { completions: 0, bonus: 0, xpGained: {}, itemsGained: {}, coinsGained: 0, newSpecies: [], newAchievements: [] };
   const addItemSum = (id: string, q: number) => (summary.itemsGained[id] = (summary.itemsGained[id] || 0) + q);
   const addXpSum = (s: string, x: number) => (summary.xpGained[s] = (summary.xpGained[s] || 0) + x);
+
+  let guildCatches = 0;
+
+  // Grant one full catch's rewards (used by the timed cast and by efficiency procs).
+  const doFish = (zone: (typeof gameData.zones)[number], rareBonus: number) => {
+    const species = rollSpecies(zone.id, rareBonus);
+    if (!species) return;
+    addItem(p, species, 1);
+    addItemSum(species, 1);
+    const def = gameData.items[species];
+    const size = def?.sizeMin != null && def?.sizeMax != null
+      ? Math.round((def.sizeMin + Math.random() * (def.sizeMax - def.sizeMin)) * 10) / 10
+      : 0;
+    const rec = p.bestiary[species];
+    if (!rec) { p.bestiary[species] = { count: 1, max: size }; summary.newSpecies.push(species); }
+    else { rec.count++; if (size > rec.max) rec.max = size; }
+    if (size > 0 && (!summary.biggest || size > summary.biggest.size)) summary.biggest = { item: species, size };
+    const rarity = def?.rarity ?? "common";
+    const xp = Math.round(gameData.rarityXp[rarity] * zone.xpMult);
+    grantXp(p, "fishing", xp);
+    addXpSum("fishing", xp);
+    if (def?.category === "fish") guildCatches++; // treasure (old boot) is not a fish
+    summary.completions++;
+  };
+
+  // Grant one produce/gather completion; returns false if inputs were missing.
+  const doProduce = (def: (typeof gameData.actions)[number]): boolean => {
+    if (def.inputs.length && !hasInputs(p, def)) return false;
+    for (const inp of def.inputs) removeItem(p, inp.item, inp.qty);
+    for (const out of def.outputs) {
+      const chance = out.chance ?? 1;
+      const got = chance >= 1 ? out.qty : Math.random() < chance ? out.qty : 0;
+      if (got > 0) { addItem(p, out.item, got); addItemSum(out.item, got); }
+    }
+    grantXp(p, def.skill, def.xp);
+    addXpSum(def.skill, def.xp);
+    summary.completions++;
+    return true;
+  };
 
   // If nothing is active but something is queued, promote it.
   if (!p.action && p.queue.length) promoteNext(p);
 
   let remaining = Math.min(now - p.updatedAt, OFFLINE_CAP_MS);
   let clock = now - remaining; // absolute time as we distribute the elapsed window
-  let guildCatches = 0;
   let guard = 0;
 
   while (remaining > 0 && p.action && guard < SIM_GUARD) {
@@ -315,33 +394,22 @@ export function processElapsed(p: PlayerState, now: number): ProgressSummary {
       const need = durMs - entry.progressMs;
       if (remaining < need) { entry.progressMs += remaining; clock += remaining; remaining = 0; break; }
 
-      // Complete one cast.
+      // The timed cast (consumes bait if the toggle is on).
       let rareBonus = baseRare;
       if (p.baitActive) {
         const bait = bestBait(p);
         if (bait) { removeItem(p, bait.id, 1); rareBonus += bait.bonus; }
       }
-      const species = rollSpecies(entry.refId, rareBonus);
-      if (species) {
-        addItem(p, species, 1);
-        addItemSum(species, 1);
-        const def = gameData.items[species];
-        const size = def?.sizeMin != null && def?.sizeMax != null
-          ? Math.round((def.sizeMin + Math.random() * (def.sizeMax - def.sizeMin)) * 10) / 10
-          : 0;
-        const rec = p.bestiary[species];
-        if (!rec) { p.bestiary[species] = { count: 1, max: size }; summary.newSpecies.push(species); }
-        else { rec.count++; if (size > rec.max) rec.max = size; }
-        if (size > 0 && (!summary.biggest || size > summary.biggest.size)) summary.biggest = { item: species, size };
-        const rarity = def?.rarity ?? "common";
-        const xp = Math.round(gameData.rarityXp[rarity] * zone.xpMult);
-        grantXp(p, "fishing", xp);
-        addXpSum("fishing", xp);
-        guildCatches++;
-      }
+      doFish(zone, rareBonus);
       entry.done++;
-      summary.completions++;
       clock += need; remaining -= need; entry.progressMs = 0;
+
+      // Efficiency: free instant extra casts (no time, no bait), using base rare bonus.
+      let eff = efficiencyFor(p, "fishing", zone.levelReq);
+      while (eff > 0) {
+        if (Math.random() < Math.min(1, eff)) { doFish(zone, baseRare); entry.done++; summary.bonus++; }
+        eff -= 1;
+      }
       if (entry.target > 0 && entry.done >= entry.target) { if (!promoteNext(p)) break; }
       continue;
     }
@@ -349,29 +417,25 @@ export function processElapsed(p: PlayerState, now: number): ProgressSummary {
     // gather / produce
     const def = actionsById.get(entry.refId);
     if (!def) { if (!promoteNext(p)) break; continue; }
-    const durMs = def.durationSec * 1000;
-    const need = durMs - entry.progressMs;
-
+    const need = actionDurMs(p, def) - entry.progressMs;
     if (remaining < need) { entry.progressMs += remaining; clock += remaining; remaining = 0; break; }
 
     if (def.inputs.length && !hasInputs(p, def)) {
       // Out of materials — move on to the next queued task (or stop).
-      const advanced = promoteNext(p);
-      if (!advanced) { summary.stopped = "no_inputs"; break; }
+      if (!promoteNext(p)) { summary.stopped = "no_inputs"; break; }
       continue; // note: time not consumed; next entry starts fresh
     }
 
-    for (const inp of def.inputs) removeItem(p, inp.item, inp.qty);
-    for (const out of def.outputs) {
-      const chance = out.chance ?? 1;
-      const got = chance >= 1 ? out.qty : Math.random() < chance ? out.qty : 0;
-      if (got > 0) { addItem(p, out.item, got); addItemSum(out.item, got); }
-    }
-    grantXp(p, def.skill, def.xp);
-    addXpSum(def.skill, def.xp);
+    doProduce(def);
     entry.done++;
-    summary.completions++;
     clock += need; remaining -= need; entry.progressMs = 0;
+
+    // Efficiency procs (skip a proc if it would run out of inputs).
+    let eff = efficiencyFor(p, def.skill, def.levelReq);
+    while (eff > 0) {
+      if (Math.random() < Math.min(1, eff)) { if (doProduce(def)) { entry.done++; summary.bonus++; } }
+      eff -= 1;
+    }
     if (entry.target > 0 && entry.done >= entry.target) { if (!promoteNext(p)) break; }
   }
 
