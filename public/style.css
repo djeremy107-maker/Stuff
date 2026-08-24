@@ -293,6 +293,23 @@ input:focus { outline: none; border-color: var(--accent); }
   to { top: 100vh; opacity: 0; }
 }
 
+/* ---------- Boathouse ---------- */
+.room-dots { display: flex; gap: 4px; margin: 2px 0 6px; }
+.room-dot { width: 14px; height: 6px; border-radius: 3px; background: var(--bg); border: 1px solid var(--line); }
+.room-dot.on { background: var(--accent-2); border-color: var(--accent-2); }
+.card.maxed { border-color: var(--accent); }
+.tag-item.short { background: rgba(224, 108, 117, .15); border: 1px solid var(--danger); color: var(--danger); }
+.purse-contrib { display: flex; gap: 8px; align-items: center; }
+.purse-contrib input { padding: 6px 8px; }
+
+/* ---------- Enhancement ---------- */
+.plus-badge { display: inline-block; background: var(--accent-2); color: #241a0d; border-radius: 6px; padding: 0 5px; font-size: .72rem; font-weight: 700; vertical-align: middle; }
+.lacquer-ctl { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; cursor: pointer; }
+.cancel-btn { margin-top: 8px; width: 100%; background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 10px; }
+
+/* ---------- Trophy records ---------- */
+.ci-record { color: var(--accent-2); font-size: .76rem; margin-top: 4px; font-weight: 600; }
+
 .toast-wrap { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; z-index: 50; }
 .toast { background: var(--bg-3); border: 1px solid var(--accent); color: var(--text); padding: 8px 14px; border-radius: 8px; font-size: .85rem; animation: fade 3s forwards; }
 @keyframes fade { 0%,80% { opacity: 1; } 100% { opacity: 0; } }

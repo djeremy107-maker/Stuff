@@ -10,7 +10,7 @@ export function loadBank(): Record<string, number> {
   const row = selectBank.get() as { items_json: string } | undefined;
   return row ? JSON.parse(row.items_json) : {};
 }
-function saveBank(items: Record<string, number>) {
+export function saveBank(items: Record<string, number>) {
   updateBank.run(JSON.stringify(items));
 }
 

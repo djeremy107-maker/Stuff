@@ -14,6 +14,8 @@ const state = {
   presence: [],
   guild: null,
   bank: {},
+  boathouse: null,
+  records: [],
   event: null,
   pendingWelcome: false,
   queueQty: 50, // 0 = infinite
@@ -89,6 +91,10 @@ function connectWs() {
       onStateUpdate(msg.summary);
       handleSummary(msg.summary);
       if (msg.actionResult && !msg.actionResult.ok) toast(msg.actionResult.error);
+      else if (msg.actionResult && typeof msg.actionResult.success === "boolean") {
+        if (msg.actionResult.success) { burstConfetti(); toast(`✨ Enhancement succeeded! Now +${msg.actionResult.newPlus}`); }
+        else toast(`💨 Enhancement failed — materials lost, rod is safe.`);
+      }
     } else if (msg.type === "event") {
       state.event = msg.event;
       renderEventRibbon();
@@ -101,6 +107,12 @@ function connectWs() {
     } else if (msg.type === "bank") {
       state.bank = msg.items || {};
       if (state.tab === "bank") renderPanel();
+    } else if (msg.type === "boathouse") {
+      state.boathouse = msg;
+      if (state.tab === "boathouse") renderPanel();
+    } else if (msg.type === "records") {
+      state.records = msg.records || [];
+      if (state.tab === "collection") renderPanel();
     } else if (msg.type === "chat_history") {
       $("#chat-log").innerHTML = "";
       msg.messages.forEach(addChatMsg);
@@ -188,7 +200,7 @@ function renderNav() {
   }
   const extra = $("#extra-nav");
   extra.innerHTML = "";
-  for (const [id, icon, label] of [["collection", "📖", "Collection"], ["achievements", "🏆", "Achievements"], ["bank", "🏦", "Shared Bank"], ["shop", "🛒", "Shop"]]) {
+  for (const [id, icon, label] of [["collection", "📖", "Collection"], ["achievements", "🏆", "Achievements"], ["bank", "🏦", "Shared Bank"], ["boathouse", "🏠", "Boathouse"], ["shop", "🛒", "Shop"]]) {
     const item = el("div", "nav-item" + (state.tab === id ? " active" : ""));
     item.innerHTML = `<span class="nicon">${icon}</span><span>${label}</span>`;
     item.onclick = () => selectTab(id);
@@ -210,6 +222,7 @@ function renderPanel() {
   if (state.tab === "achievements") return renderAchievements(panel);
   if (state.tab === "shop") return renderShop(panel);
   if (state.tab === "bank") return renderBank(panel);
+  if (state.tab === "boathouse") return renderBoathouse(panel);
   if (state.tab === "fishing") return renderFishing(panel);
   return renderSkill(panel, state.tab);
 }
@@ -248,12 +261,22 @@ function renderFishing(panel) {
   const skill = state.game.skills.find((s) => s.id === "fishing");
   skillHeader(panel, skill);
 
-  // Controls: rod, lure, and provisions — all equipped/set from your Inventory below.
+  // Controls: rod, reel, line, lure, and provisions — all equipped/set from your Inventory below.
   const controls = el("div", "fish-controls");
   const rod = p.equipped.rod;
+  const rs = p.rodStats;
+  const plusTxt = rs && rs.plus > 0 ? ` <span class="plus-badge">+${rs.plus}</span>` : "";
   const rodTxt = rod
-    ? `${iconFor(rod)} <b>${nameFor(rod)}</b> <span class="muted">(−${Math.round((1 - itemDef(rod).rodSpeedMult) * 100)}% time, +${Math.round(itemDef(rod).rodRareBonus * 100)}% rare)</span>`
+    ? `${iconFor(rod)} <b>${nameFor(rod)}</b>${plusTxt} <span class="muted">(−${Math.round((1 - (rs?.speedMult ?? 1)) * 100)}% time, +${Math.round((rs?.rareBonus ?? 0) * 100)}% rare)</span>`
     : `<span class="muted">No rod — fishing bare-handed. Craft or buy a rod!</span>`;
+  const reel = p.equipped.reel;
+  const reelTxt = reel
+    ? `${iconFor(reel)} <b>${nameFor(reel)}</b> <span class="muted">(+${Math.round((itemDef(reel).reelEfficiency || 0) * 100)}% efficiency)</span>`
+    : `<span class="muted">No reel equipped.</span>`;
+  const line = p.equipped.line;
+  const lineTxt = line
+    ? `${iconFor(line)} <b>${nameFor(line)}</b> <span class="muted">(${Math.round((itemDef(line).lineBaitSave || 0) * 100)}% chance to save your lure)</span>`
+    : `<span class="muted">No line equipped.</span>`;
   const lure = p.equipped.lure;
   const lureQty = lure ? (p.inventory[lure] || 0) : 0;
   const lureTxt = lure
@@ -271,6 +294,8 @@ function renderFishing(panel) {
     : `<span class="muted">Not set — brew a drink for efficiency/XP.</span>`;
   controls.innerHTML = `
     <div class="ctl">🎣 Rod: ${rodTxt}</div>
+    <div class="ctl">🎡 Reel: ${reelTxt}</div>
+    <div class="ctl">🧶 Line: ${lineTxt}</div>
     <div class="ctl">🪝 Lure: ${lureTxt}</div>
     <div class="ctl">🍽️ Food: ${foodTxt}</div>
     <div class="ctl">🧉 Drink: ${drinkTxt}</div>
@@ -331,9 +356,23 @@ function cardButtons(active, locked, lockedLabel, startLabel, kind, refId) {
 }
 
 // ---- Foraging / Crafting / Cooking ----
+const TOOL_SLOT_BY_SKILL = { foraging: "toolForaging", crafting: "toolCrafting", cooking: "toolCooking" };
 function renderSkill(panel, skillId) {
   const skill = state.game.skills.find((s) => s.id === skillId);
   skillHeader(panel, skill);
+
+  const slot = TOOL_SLOT_BY_SKILL[skillId];
+  if (slot) {
+    const p = state.player;
+    const tool = p.equipped[slot];
+    const toolTxt = tool
+      ? `${iconFor(tool)} <b>${nameFor(tool)}</b> <span class="muted">(−${Math.round((1 - (itemDef(tool).toolSpeedMult || 1)) * 100)}% time${itemDef(tool).toolEfficiency ? `, +${Math.round(itemDef(tool).toolEfficiency * 100)}% efficiency` : ""})</span>`
+      : `<span class="muted">No tool equipped — craft or buy one, then equip it from Inventory.</span>`;
+    const controls = el("div", "fish-controls");
+    controls.innerHTML = `<div class="ctl">🛠️ Tool: ${toolTxt}</div>`;
+    panel.appendChild(controls);
+  }
+
   queueControls(panel);
   const cards = el("div", "cards");
   for (const a of state.game.actions.filter((x) => x.skill === skillId)) cards.appendChild(actionCard(a, skill));
@@ -377,11 +416,14 @@ function renderCollection(panel) {
     const grid = el("div", "col-grid");
     for (const f of z.fish.slice().sort((a, b) => RARITY_ORDER.indexOf(rarityOf(a.item)) - RARITY_ORDER.indexOf(rarityOf(b.item)))) {
       const rec = p.bestiary[f.item];
+      const worldRecord = state.records.find((r) => r.species === f.item);
+      const trophyLine = worldRecord ? `<div class="ci-record">🏆 Record: ${escapeHtml(worldRecord.holder_name)} — ${worldRecord.size}cm</div>` : "";
       const item = el("div", "col-item" + (rec ? "" : " uncaught"));
       item.innerHTML = `
         <div class="ci-top"><span class="ci-icon">${rec ? iconFor(f.item) : "❔"}</span>
           <span class="ci-name ${rarityCls(f.item)}"><span class="rar-dot bg-${rarityOf(f.item)}"></span>${rec ? nameFor(f.item) : "???"}</span></div>
-        <div class="ci-meta">${rec ? `Caught ${rec.count.toLocaleString()} · biggest ${rec.max} cm` : `Not yet discovered`}</div>
+        <div class="ci-meta">${rec ? `Caught ${rec.count.toLocaleString()} · your best ${rec.max} cm` : `Not yet discovered`}</div>
+        ${trophyLine}
       `;
       grid.appendChild(item);
     }
@@ -457,6 +499,56 @@ function renderBank(panel) {
   panel.appendChild(bagGrid);
 }
 
+// ---- The Boathouse ----
+function costLine(cost) {
+  const mats = cost.materials.map((m) => {
+    const have = state.bank[m.item] || 0;
+    const short = have < m.qty;
+    return `<span class="tag-item${short ? " short" : ""}">${iconFor(m.item)} ${m.qty.toLocaleString()} ${nameFor(m.item)} <b>(bank: ${have.toLocaleString()})</b></span>`;
+  }).join(" ");
+  const purseShort = (state.boathouse?.purseCoins || 0) < cost.coins;
+  return `<div class="c-io">Costs: <span class="tag-item${purseShort ? " short" : ""}">🪙 ${cost.coins.toLocaleString()} <b>(purse: ${(state.boathouse?.purseCoins || 0).toLocaleString()})</b></span> ${mats}</div>`;
+}
+function renderBoathouse(panel) {
+  const bh = state.boathouse;
+  panel.appendChild(el("div", "panel-head", `<h2>🏠 The Boathouse</h2><span class="lvl">🪙 ${(bh?.purseCoins || 0).toLocaleString()} in the shared purse</span>`));
+  panel.appendChild(el("p", "panel-blurb", "A shared home you build together. Upgrades draw materials from the Shared Bank and coins from the Shared Purse — deposit some of each, then either of you can spend it."));
+
+  const purseRow = el("div", "fish-controls");
+  purseRow.innerHTML = `
+    <div class="ctl">🪙 Your coins: <b>${state.player.coins.toLocaleString()}</b></div>
+    <div class="ctl purse-contrib">
+      <input type="number" id="purse-amount" min="1" placeholder="Amount" style="width:110px" />
+      <button class="do" id="purse-contribute-btn">Contribute to Purse</button>
+    </div>
+  `;
+  panel.appendChild(purseRow);
+  purseRow.querySelector("#purse-contribute-btn").onclick = () => {
+    const amount = Math.floor(Number(purseRow.querySelector("#purse-amount").value));
+    if (amount > 0) send({ type: "purse_contribute", amount });
+  };
+
+  if (!bh) return void panel.appendChild(el("p", "empty-note", "Loading…"));
+  const cards = el("div", "cards");
+  for (const room of bh.rooms) {
+    const card = el("div", "card" + (room.level >= room.maxLevel ? " maxed" : ""));
+    const levelDots = Array.from({ length: room.maxLevel }, (_, i) => `<span class="room-dot${i < room.level ? " on" : ""}"></span>`).join("");
+    card.innerHTML = `
+      <div class="c-title">${room.icon} ${room.name} <span class="muted">Lv ${room.level}/${room.maxLevel}</span></div>
+      <div class="room-dots">${levelDots}</div>
+      <div class="c-meta">${room.desc}</div>
+      ${room.nextCost ? costLine(room.nextCost) : `<div class="c-meta eff">✅ Maxed out!</div>`}
+    `;
+    if (room.nextCost) {
+      const btn = el("button", "do", `Upgrade to Lv ${room.level + 1}`);
+      btn.onclick = () => send({ type: "boathouse_upgrade", room: room.id });
+      card.appendChild(btn);
+    }
+    cards.appendChild(card);
+  }
+  panel.appendChild(cards);
+}
+
 // ---------------------------------------------------------------- Inventory
 function renderInventory() {
   const grid = $("#inventory-grid");
@@ -469,22 +561,49 @@ function renderInventory() {
     const d = itemDef(id);
     const isRod = d.category === "rod";
     const isBait = d.category === "bait";
+    const isReel = d.category === "reel";
+    const isLine = d.category === "line";
+    const isTool = d.category === "tool";
+    const toolSlot = isTool ? TOOL_SLOT_BY_SKILL[d.toolSkill] : null;
     const isFood = d.category === "dish" && d.buffDurationSec != null;
     const isDrink = d.category === "drink" && d.buffDurationSec != null;
-    const equipped = (isRod && p.equipped.rod === id) || (isBait && p.equipped.lure === id) || (isFood && p.loadout.food === id) || (isDrink && p.loadout.drink === id);
+    const equipped = (isRod && p.equipped.rod === id) || (isBait && p.equipped.lure === id) ||
+      (isReel && p.equipped.reel === id) || (isLine && p.equipped.line === id) ||
+      (isTool && p.equipped[toolSlot] === id) ||
+      (isFood && p.loadout.food === id) || (isDrink && p.loadout.drink === id);
     const item = el("div", "inv-item" + (equipped ? " equipped" : ""));
     item.title = valueFor(id) != null ? `${nameFor(id)} — sells for 🪙${valueFor(id)}` : nameFor(id);
-    item.innerHTML = `<div class="ii-icon">${iconFor(id)}</div><div class="ii-qty">${qty.toLocaleString()}</div><span class="ii-name ${rarityCls(id)}">${nameFor(id)}</span>`;
+    const plus = isRod ? (p.enhancements[id] || 0) : 0;
+    const plusBadge = plus > 0 ? ` <span class="plus-badge">+${plus}</span>` : "";
+    item.innerHTML = `<div class="ii-icon">${iconFor(id)}</div><div class="ii-qty">${qty.toLocaleString()}</div><span class="ii-name ${rarityCls(id)}">${nameFor(id)}${plusBadge}</span>`;
     const act = el("div", "ii-actions");
     if (isRod) {
       const eq = el("button", null, equipped ? "Unequip" : "Equip");
       eq.onclick = () => send(equipped ? { type: "unequip", slot: "rod" } : { type: "equip", slot: "rod", item: id });
       act.appendChild(eq);
+      const enh = el("button", null, "Enhance");
+      enh.onclick = () => openEnhanceModal(id);
+      act.appendChild(enh);
     }
     if (isBait) {
       const eq = el("button", null, equipped ? "Unequip" : "Equip as Lure");
       eq.title = `+${Math.round((d.baitRareBonus || 0) * 100)}% rare per cast while equipped`;
       eq.onclick = () => send(equipped ? { type: "unequip", slot: "lure" } : { type: "equip", slot: "lure", item: id });
+      act.appendChild(eq);
+    }
+    if (isReel) {
+      const eq = el("button", null, equipped ? "Unequip" : "Equip");
+      eq.onclick = () => send(equipped ? { type: "unequip", slot: "reel" } : { type: "equip", slot: "reel", item: id });
+      act.appendChild(eq);
+    }
+    if (isLine) {
+      const eq = el("button", null, equipped ? "Unequip" : "Equip");
+      eq.onclick = () => send(equipped ? { type: "unequip", slot: "line" } : { type: "equip", slot: "line", item: id });
+      act.appendChild(eq);
+    }
+    if (isTool) {
+      const eq = el("button", null, equipped ? "Unequip" : "Equip");
+      eq.onclick = () => send(equipped ? { type: "unequip", slot: toolSlot } : { type: "equip", slot: toolSlot, item: id });
       act.appendChild(eq);
     }
     if (isFood) {
@@ -511,6 +630,58 @@ function renderInventory() {
     if (act.children.length) item.appendChild(act);
     grid.appendChild(item);
   }
+}
+
+// ---- Rod enhancement modal ----
+const ENHANCE_SUCCESS = [0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.45, 0.4, 0.35, 0.3, 0.25];
+function enhanceCostClient(target) {
+  return { driftwood: target, fishing_line: target, pearl: Math.ceil(target / 3), coins: 25 * target * target };
+}
+function workshopEnhanceBonus() {
+  const w = state.boathouse?.rooms?.find((r) => r.id === "workshop");
+  return (w?.level || 0) * 0.01;
+}
+function openEnhanceModal(rodId) {
+  const p = state.player;
+  const plus = p.enhancements[rodId] || 0;
+  const overlay = el("div", "modal-overlay");
+  if (plus >= 10) {
+    overlay.innerHTML = `<div class="modal"><h2>${iconFor(rodId)} ${nameFor(rodId)}</h2><p class="wb-row">Already at max enhancement (+10)! 🏆</p><button class="primary wb-close">Close</button></div>`;
+  } else {
+    const target = plus + 1;
+    const cost = enhanceCostClient(target);
+    const chance = Math.min(1, ENHANCE_SUCCESS[target] + workshopEnhanceBonus());
+    const haveLacquer = (p.inventory.blessed_lacquer || 0) > 0;
+    const short = (need, have) => (have < need ? " short" : "");
+    overlay.innerHTML = `
+      <div class="modal">
+        <h2>${iconFor(rodId)} ${nameFor(rodId)}${plus > 0 ? ` <span class="plus-badge">+${plus}</span>` : ""}</h2>
+        <p class="wb-row">Attempt <b>+${target}</b> — success chance <b>${Math.round(chance * 100)}%</b></p>
+        <div class="wb-row">
+          <span class="tag-item${short(cost.driftwood, p.inventory.driftwood || 0)}">🪵 ${cost.driftwood} Driftwood <span class="muted">(have ${p.inventory.driftwood || 0})</span></span>
+          <span class="tag-item${short(cost.fishing_line, p.inventory.fishing_line || 0)}">🧵 ${cost.fishing_line} Fishing Line <span class="muted">(have ${p.inventory.fishing_line || 0})</span></span>
+          <span class="tag-item${short(cost.pearl, p.inventory.pearl || 0)}">🫧 ${cost.pearl} Pearl <span class="muted">(have ${p.inventory.pearl || 0})</span></span>
+          <span class="tag-item${short(cost.coins, p.coins)}">🪙 ${cost.coins.toLocaleString()} <span class="muted">(have ${p.coins.toLocaleString()})</span></span>
+        </div>
+        ${haveLacquer
+          ? `<label class="ctl lacquer-ctl"><input type="checkbox" id="use-lacquer"/> Use Blessed Lacquer (+15pp, you have ${p.inventory.blessed_lacquer})</label>`
+          : `<p class="wb-row muted">No Blessed Lacquer — craft one at Crafting 40 for +15pp success.</p>`}
+        <p class="wb-row muted">Failed attempts only cost the materials — your rod is never damaged or destroyed.</p>
+        <button class="primary" id="enhance-attempt-btn">Attempt Enhance</button>
+        <button class="wb-close cancel-btn">Cancel</button>
+      </div>`;
+  }
+  overlay.querySelector(".wb-close").onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  const attemptBtn = overlay.querySelector("#enhance-attempt-btn");
+  if (attemptBtn) {
+    attemptBtn.onclick = () => {
+      const useProtection = !!overlay.querySelector("#use-lacquer")?.checked;
+      send({ type: "enhance", rodId, useProtection });
+      overlay.remove();
+    };
+  }
+  document.body.appendChild(overlay);
 }
 
 // ---------------------------------------------------------------- Action banner

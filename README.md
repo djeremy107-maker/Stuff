@@ -7,7 +7,7 @@ rods, and level up a shared **Anglers' Guild** together.
 
 Built for two people (you + your girlfriend), and designed to keep growing.
 
-## What's in it (v0.8)
+## What's in it (v0.9)
 
 - **6 fishing zones** — Backyard Pond → Riverbank → Misty Lake → Coral Harbor →
   Deep Sea → Abyssal Trench, each unlocking with your Fishing level.
@@ -38,6 +38,22 @@ Built for two people (you + your girlfriend), and designed to keep growing.
   so your partner sees it even if they were offline when it happened. Based on
   research into what makes idle games (Melvor, Milky Way Idle) and OSRS's
   "number go up" loop so compelling — see `docs/RESEARCH_ENGAGEMENT.md`.
+- **Tackle slots** — a reel (+efficiency), a line (chance to save your lure),
+  and a tool for each trade skill (Foraging/Cooking/Tackle Crafting), each in
+  three tiers you craft yourself.
+- **Rod enhancement** — spend materials and coins to push a rod to +1…+10 for
+  more speed and rare chance. Cozy rules: a failed attempt only costs the
+  materials, never the rod. Craft *Blessed Lacquer* for a better shot.
+- **The Boathouse** 🏠 — a shared home you build together: six rooms (Dock,
+  Smokery, Workshop, Bait Garden, Chart Room, Trophy Hall) that boost
+  efficiency, rare chance, enhancement odds, and hotspot events, funded by a
+  **shared coin purse** and the shared Bank — so it's a genuine joint project.
+  The Bait Garden passively grows worms & grubs into the Bank even while
+  you're both offline; the Trophy Hall tracks record catches for each species,
+  shown right on the Collection page (with a chat shout-out when a record
+  falls).
+- **A bigger shop** — sells materials, bait, and tier-1 gear at fair prices,
+  so coins always have something to do.
 - **Supporting trade skills**: **Foraging** (bait & materials), **Tackle
   Crafting** (bait, hooks, line, and better **rods**), **Cooking** (turn fish
   into valuable dishes).

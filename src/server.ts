@@ -22,6 +22,13 @@ import {
   unequipRod,
   equipLure,
   unequipLure,
+  equipReel,
+  unequipReel,
+  equipLine,
+  unequipLine,
+  equipTool,
+  unequipTool,
+  enhanceRod,
   sellItem,
   buyItem,
   guildInfo,
@@ -29,9 +36,17 @@ import {
   type PlayerState,
   type ProgressSummary,
 } from "./engine.js";
-import { loadBank, deposit, withdraw } from "./bank.js";
+import { loadBank, saveBank, deposit, withdraw } from "./bank.js";
+import { boathouseInfo, upgradeRoom, tickBaitGarden } from "./boathouse.js";
+import { contributeToPurse } from "./purse.js";
+import { allRecords } from "./records.js";
 import { startEvents, getActiveEvent } from "./events.js";
 import { levelForXp } from "./leveling.js";
+
+const TOOL_SLOTS = new Set(["toolForaging", "toolCrafting", "toolCooking"]);
+function toolSkillForSlot(slot: string): "foraging" | "crafting" | "cooking" {
+  return slot === "toolForaging" ? "foraging" : slot === "toolCrafting" ? "crafting" : "cooking";
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 3000);
@@ -123,9 +138,26 @@ function broadcastPresence() {
 function broadcastBank() {
   broadcast({ type: "bank", items: loadBank() });
 }
+function broadcastBoathouse() {
+  broadcast({ type: "boathouse", ...boathouseInfo() });
+}
+function broadcastRecords() {
+  broadcast({ type: "records", records: allRecords() });
+}
 
 // Live hotspot events — rotate a boosted zone and tell everyone.
 startEvents((event) => broadcast({ type: "event", event }));
+
+// The Bait Garden (once built) passively grows worms & grubs into the shared
+// Bank, independent of any one player's session.
+setInterval(() => {
+  const bank = loadBank();
+  const grown = tickBaitGarden(bank);
+  if (grown) {
+    saveBank(bank);
+    broadcastBank();
+  }
+}, 30 * 60 * 1000);
 
 // ---- Chat ----
 const insertMsg = db.prepare("INSERT INTO messages (user_id, name, text, ts, kind, rarity) VALUES (?, ?, ?, ?, ?, ?)");
@@ -171,6 +203,13 @@ function announceSummary(p: PlayerState, summary: ProgressSummary) {
   if (summary.guildLevelUp) {
     systemMsg(p.userId, `🏛️ The Anglers' Guild reached Level ${summary.guildLevelUp.to}!`);
   }
+  for (const r of summary.newRecords) {
+    const def = gameData.items[r.item];
+    const label = def ? `${def.icon} ${def.name}` : r.item;
+    const beat = r.previousHolder ? ` (beat ${r.previousHolder}'s record!)` : "";
+    systemMsg(p.userId, `🏆 ${p.name} set a new Trophy Hall record — ${label} at ${r.size}cm${beat}`);
+  }
+  if (summary.newRecords.length) broadcastRecords();
 }
 
 // ---- Tick ----
@@ -213,6 +252,8 @@ wss.on("connection", (ws, req) => {
   ws.send(JSON.stringify({ type: "chat_history", messages: recentChat() }));
   ws.send(JSON.stringify({ type: "bank", items: loadBank() }));
   ws.send(JSON.stringify({ type: "event", event: getActiveEvent() }));
+  ws.send(JSON.stringify({ type: "boathouse", ...boathouseInfo() }));
+  ws.send(JSON.stringify({ type: "records", records: allRecords() }));
   broadcastPresence();
 
   ws.on("message", (raw) => {
@@ -239,15 +280,50 @@ wss.on("connection", (ws, req) => {
         withPlayer(userId, (p) => void stopAction(p));
         break;
       case "equip": {
-        const slot = msg.slot === "lure" ? "lure" : "rod";
-        withPlayer(userId, (p) => ({ actionResult: slot === "lure" ? equipLure(p, String(msg.item)) : equipRod(p, String(msg.item)) }));
+        const slot = String(msg.slot ?? "rod");
+        withPlayer(userId, (p) => {
+          const item = String(msg.item);
+          if (slot === "lure") return { actionResult: equipLure(p, item) };
+          if (slot === "reel") return { actionResult: equipReel(p, item) };
+          if (slot === "line") return { actionResult: equipLine(p, item) };
+          if (TOOL_SLOTS.has(slot)) return { actionResult: equipTool(p, toolSkillForSlot(slot), item) };
+          return { actionResult: equipRod(p, item) };
+        });
         break;
       }
       case "unequip": {
-        const slot = msg.slot === "lure" ? "lure" : "rod";
-        withPlayer(userId, (p) => void (slot === "lure" ? unequipLure(p) : unequipRod(p)));
+        const slot = String(msg.slot ?? "rod");
+        withPlayer(userId, (p) => {
+          if (slot === "lure") unequipLure(p);
+          else if (slot === "reel") unequipReel(p);
+          else if (slot === "line") unequipLine(p);
+          else if (TOOL_SLOTS.has(slot)) unequipTool(p, toolSkillForSlot(slot));
+          else unequipRod(p);
+        });
         break;
       }
+      case "enhance":
+        withPlayer(userId, (p) => ({ actionResult: enhanceRod(p, String(msg.rodId), !!msg.useProtection) }));
+        break;
+      case "boathouse_upgrade": {
+        withPlayer(userId, (p) => {
+          const bank = loadBank();
+          const result = upgradeRoom(String(msg.room), bank);
+          if (result.ok) {
+            saveBank(bank);
+            const roomDef = gameData.boathouseRooms.find((r) => r.id === msg.room);
+            systemMsg(userId, `🏠 ${p.name} upgraded the ${roomDef?.name ?? msg.room} to Level ${result.newLevel}!`);
+            broadcastBank();
+            broadcastBoathouse();
+          }
+          return { actionResult: result };
+        });
+        break;
+      }
+      case "purse_contribute":
+        withPlayer(userId, (p) => ({ actionResult: contributeToPurse(p, Number(msg.amount ?? 0)) }));
+        broadcastBoathouse();
+        break;
       case "sell":
         withPlayer(userId, (p) => ({ actionResult: sellItem(p, String(msg.item), Number(msg.qty ?? 1)) }));
         break;

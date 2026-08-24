@@ -57,6 +57,23 @@ it incremental depth for two players.
 - **Achievements**: definitions live in `gameData.achievements`; `processElapsed`
   evaluates unmet ones each advance and grants coin rewards, surfacing unlocks in
   the progress summary. Unlocked ids are stored per character.
+- **Tackle & enhancement**: `equipped.{reel,line,toolForaging,toolCrafting,
+  toolCooking}` are optional item ids feeding `efficiencyFor()`/`actionDurMs()`/
+  the lure-save roll. `enhancements: Record<rodId, plus>` is a per-rod-*type*
+  enhancement level (not per physical instance — the simplification is
+  intentional, see DESIGN_REVIEW_MWI.md §5.2); `rodStatsFor()` derives the
+  effective speed/rare from it. `enhanceRod()` in `engine.ts` is the one place
+  that spends materials/coins and rolls success.
+- **The Boathouse** (`src/boathouse.ts`, `src/purse.ts`, `src/records.ts`):
+  three small modules, each owning one shared single-row/table concern
+  (rooms+bait-tick, coin purse, per-species records), following the same
+  pattern as `bank.ts`/the `guild` table. `boathouse.ts` exposes pure bonus
+  getters (`boathouseSkillEfficiency`, `boathouseRareBonus`,
+  `boathouseEnhanceBonus`, `chartRoomBonus`) that `engine.ts` and `events.ts`
+  both call — a light DB read per call, same pattern already proven fine for
+  Guild bonuses under offline-catch-up stress. `tickBaitGarden()` is driven by
+  a 30-minute `setInterval` in `server.ts`, independent of any player session,
+  with a 12h backlog cap carried forward via a stored `bait_last_tick`.
 - **Persistence** (`src/db.ts`): SQLite. `characters` stores coins, a skills XP
   map, inventory, bestiary, equipped rod, and the current action. Offline
   progress falls out of the action's start timestamp.
@@ -112,9 +129,39 @@ content (shiny/variant fish, weather/time-of-day exclusives).
 
 Phase 1 is complete.
 
-**Phase 2 — Gear & Home:** tackle slots + tools, rod enhancement (+1…+10, cozy),
-the shared **Boathouse** (coop house upgrades = main coin/material sink, includes
-passive Bait Garden and a Trophy Hall), shared purse + gifting, shop expansion.
+**Phase 2 — Gear & Home (complete):**
+- [x] **Tackle slots + tools** — `equipped` gained `reel`, `line`,
+      `toolForaging`, `toolCrafting`, `toolCooking` (all optional item-id
+      strings, same JSON blob, no migration needed). Reels add fishing
+      efficiency; lines give a % chance to save the equipped lure on a cast;
+      tools give a skill-specific speed multiplier and (tier 2+) an efficiency
+      bonus. 3 tiers × 5 slots = 15 new craftable items.
+- [x] **Rod enhancement (+1…+10)** — simplified from the review's per-instance
+      `GearRef` model to a per-**type** `enhancements: Record<rodId, plus>` on
+      the player (a rod slot only ever holds one equipped instance anyway, so
+      this avoids a gear-instance migration entirely). `enhanceRod()` charges
+      materials/coins up front regardless of outcome, rolls
+      `ENHANCE_SUCCESS[target] + Workshop bonus + (Blessed Lacquer ? 0.15 : 0)`,
+      and on success bumps `enhancements[rodId]`. Effective stats:
+      `speedMult × 0.98^plus`, `rareBonus + 0.01×plus`. Cozy contract intact —
+      a failed attempt only costs the materials.
+- [x] **The Boathouse** — new `src/boathouse.ts` (rooms, cost curve, bonus
+      getters, Bait Garden tick) mirrors the `guild`/`bank` single-row DB
+      pattern. Six rooms (Dock/Smokery/Workshop/Bait Garden/Chart
+      Room/Trophy Hall) at level 0–5, cost ×2.2/level, paid from the shared
+      Bank (materials) and a new shared **Purse** (`src/purse.ts`, coins) —
+      never from the acting player's personal inventory, so it's a genuine
+      joint project. Dock/Smokery/Workshop feed `efficiencyFor()`; Chart Room
+      feeds `events.ts`'s `rollEvent()`; Trophy Hall's rare bonus feeds
+      `fishParamsAt()` and its "displays biggest catches" is backed by a new
+      `records` table (`src/records.ts`) checked on every catch and shown on
+      the Collection page.
+- [x] **Shared purse** — `contributeToPurse()` moves personal coins into the
+      shared pool; Boathouse upgrades spend from it. (Direct item gifting was
+      already covered by the existing shared Bank.)
+- [x] **Shop expansion** — ~13 items (raw materials, bait, tier-1 gear) priced
+      at roughly 3–4× sell value, so coins have a floor use even after the
+      Boathouse is built out.
 
 **Phase 3 — Harbor Life:** Merchant's Dock buy-orders + Notice Board + Guild Marks,
 Guild shared milestones; then the collection long-tail (shiny variants, weather/

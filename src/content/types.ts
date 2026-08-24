@@ -5,7 +5,7 @@ export type SkillId = "fishing" | "cooking" | "crafting" | "foraging";
 
 export type Rarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
 
-export type ItemCategory = "fish" | "material" | "bait" | "rod" | "dish" | "drink" | "treasure";
+export type ItemCategory = "fish" | "material" | "bait" | "rod" | "reel" | "line" | "tool" | "protection" | "dish" | "drink" | "treasure";
 
 export interface SkillDef {
   id: SkillId;
@@ -26,9 +26,20 @@ export interface ItemDef {
   sizeMin?: number; // cm
   sizeMax?: number; // cm
 
-  // Rod-only (equipment)
+  // Rod-only (equipment; every rod is enhanceable — see PlayerState.enhancements)
   rodSpeedMult?: number; // multiplies fishing time (lower = faster)
   rodRareBonus?: number; // added to rare-catch bonus
+
+  // Reel-only (equipment)
+  reelEfficiency?: number; // added to fishing efficiency
+
+  // Line-only (equipment)
+  lineBaitSave?: number; // chance a cast doesn't consume the equipped lure
+
+  // Tool-only (equipment, one per support skill)
+  toolSkill?: SkillId; // which skill this tool applies to
+  toolSpeedMult?: number; // multiplies that skill's action time
+  toolEfficiency?: number; // added to that skill's efficiency
 
   // Bait-only (consumed per catch while active)
   baitRareBonus?: number;
@@ -85,6 +96,19 @@ export interface AchievementDef {
     | { type: "rarity"; rarity: Rarity }; // catch any fish of this rarity
 }
 
+// A shared Boathouse room. Cost at level n = base cost x costGrowth^(n-1),
+// paid from the shared Bank (materials) and shared Purse (coins).
+export interface BoathouseRoomDef {
+  id: string;
+  name: string;
+  icon: string;
+  desc: string; // what each level grants, for display
+  maxLevel: number;
+  baseCoins: number;
+  baseMaterials: { item: string; qty: number }[];
+  costGrowth: number;
+}
+
 export interface GameData {
   skills: SkillDef[];
   items: Record<string, ItemDef>;
@@ -93,6 +117,7 @@ export interface GameData {
   shop: ShopEntry[];
   achievements: AchievementDef[];
   guildRanks: string[]; // title per guild level (index = level)
+  boathouseRooms: BoathouseRoomDef[];
   // XP awarded per catch by rarity (before a zone's xpMult).
   rarityXp: Record<Rarity, number>;
   rarityRank: Record<Rarity, number>;

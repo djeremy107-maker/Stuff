@@ -84,6 +84,34 @@ const itemList: ItemDef[] = [
   { id: "kelp_tea", name: "Kelp Tea", icon: "🍵", category: "drink", value: 15, buffDurationSec: 1800, buffEfficiencyBonus: 0.05 },
   { id: "pearlgrass_tonic", name: "Pearlgrass Tonic", icon: "🧉", category: "drink", value: 60, buffDurationSec: 2700, buffEfficiencyBonus: 0.1 },
   { id: "anglers_coffee", name: "Angler's Coffee", icon: "☕", category: "drink", value: 90, buffDurationSec: 3600, buffXpMult: 1.08 },
+
+  // ---- Reels (equipment — +fishing efficiency) ----
+  { id: "wooden_reel", name: "Wooden Reel", icon: "🎡", category: "reel", value: 45, reelEfficiency: 0.04 },
+  { id: "brass_reel", name: "Brass Reel", icon: "⚙️", category: "reel", value: 160, reelEfficiency: 0.08 },
+  { id: "pearl_reel", name: "Pearl Reel", icon: "💫", category: "reel", value: 520, reelEfficiency: 0.14 },
+
+  // ---- Lines (equipment — chance a cast doesn't consume your lure) ----
+  { id: "kelp_line", name: "Kelp Line", icon: "🧶", category: "line", value: 20, lineBaitSave: 0.15 },
+  { id: "silk_line", name: "Silk Line", icon: "🕸️", category: "line", value: 90, lineBaitSave: 0.3 },
+  { id: "wire_line", name: "Wire Line", icon: "➰", category: "line", value: 340, lineBaitSave: 0.5 },
+
+  // ---- Foraging tools (equipment) ----
+  { id: "tin_spade", name: "Tin Spade", icon: "⛏️", category: "tool", value: 30, toolSkill: "foraging", toolSpeedMult: 0.95 },
+  { id: "steel_spade", name: "Steel Spade", icon: "⛏️", category: "tool", value: 120, toolSkill: "foraging", toolSpeedMult: 0.9, toolEfficiency: 0.04 },
+  { id: "moon_spade", name: "Moon Spade", icon: "🌒", category: "tool", value: 420, toolSkill: "foraging", toolSpeedMult: 0.85, toolEfficiency: 0.08 },
+
+  // ---- Cooking tools (equipment) ----
+  { id: "iron_pan", name: "Iron Pan", icon: "🍳", category: "tool", value: 35, toolSkill: "cooking", toolSpeedMult: 0.95 },
+  { id: "copper_pot", name: "Copper Pot", icon: "🥘", category: "tool", value: 140, toolSkill: "cooking", toolSpeedMult: 0.9, toolEfficiency: 0.04 },
+  { id: "chefs_set", name: "Chef's Set", icon: "🔪", category: "tool", value: 450, toolSkill: "cooking", toolSpeedMult: 0.85, toolEfficiency: 0.08 },
+
+  // ---- Crafting tools (equipment) ----
+  { id: "whittling_kit", name: "Whittling Kit", icon: "🪚", category: "tool", value: 25, toolSkill: "crafting", toolSpeedMult: 0.95 },
+  { id: "toolbench_kit", name: "Toolbench Kit", icon: "🧰", category: "tool", value: 110, toolSkill: "crafting", toolSpeedMult: 0.9, toolEfficiency: 0.04 },
+  { id: "masters_kit", name: "Master's Kit", icon: "🛠️", category: "tool", value: 400, toolSkill: "crafting", toolSpeedMult: 0.85, toolEfficiency: 0.08 },
+
+  // ---- Rod enhancement protection ----
+  { id: "blessed_lacquer", name: "Blessed Lacquer", icon: "🧴", category: "protection", value: 80 },
 ];
 
 const items: Record<string, ItemDef> = {};
@@ -195,6 +223,34 @@ export const gameData: GameData = {
     { id: "craft_carbon_rod", skill: "crafting", name: "Craft Carbon Rod", levelReq: 35, durationSec: 10, xp: 90, inputs: [{ item: "driftwood", qty: 5 }, { item: "fishing_line", qty: 3 }, { item: "hook", qty: 3 }, { item: "pearl", qty: 1 }], outputs: [{ item: "carbon_rod", qty: 1 }] },
     { id: "craft_pro_rod", skill: "crafting", name: "Craft Angler's Pro Rod", levelReq: 55, durationSec: 14, xp: 180, inputs: [{ item: "driftwood", qty: 8 }, { item: "fishing_line", qty: 5 }, { item: "hook", qty: 5 }, { item: "pearl", qty: 3 }], outputs: [{ item: "anglers_pro_rod", qty: 1 }] },
 
+    // ---- Tackle Crafting: reels ----
+    { id: "craft_wooden_reel", skill: "crafting", name: "Craft Wooden Reel", levelReq: 10, durationSec: 5, xp: 20, inputs: [{ item: "driftwood", qty: 3 }, { item: "fishing_line", qty: 2 }], outputs: [{ item: "wooden_reel", qty: 1 }] },
+    { id: "craft_brass_reel", skill: "crafting", name: "Craft Brass Reel", levelReq: 30, durationSec: 7, xp: 50, inputs: [{ item: "driftwood", qty: 5 }, { item: "fishing_line", qty: 3 }, { item: "hook", qty: 1 }], outputs: [{ item: "brass_reel", qty: 1 }] },
+    { id: "craft_pearl_reel", skill: "crafting", name: "Craft Pearl Reel", levelReq: 50, durationSec: 9, xp: 90, inputs: [{ item: "driftwood", qty: 5 }, { item: "fishing_line", qty: 3 }, { item: "pearl", qty: 2 }], outputs: [{ item: "pearl_reel", qty: 1 }] },
+
+    // ---- Tackle Crafting: lines ----
+    { id: "craft_kelp_line", skill: "crafting", name: "Craft Kelp Line", levelReq: 5, durationSec: 4, xp: 14, inputs: [{ item: "kelp", qty: 3 }, { item: "fishing_line", qty: 1 }], outputs: [{ item: "kelp_line", qty: 1 }] },
+    { id: "craft_silk_line", skill: "crafting", name: "Craft Silk Line", levelReq: 25, durationSec: 6, xp: 42, inputs: [{ item: "kelp", qty: 4 }, { item: "fishing_line", qty: 2 }, { item: "seashell", qty: 1 }], outputs: [{ item: "silk_line", qty: 1 }] },
+    { id: "craft_wire_line", skill: "crafting", name: "Craft Wire Line", levelReq: 45, durationSec: 8, xp: 80, inputs: [{ item: "fishing_line", qty: 3 }, { item: "hook", qty: 2 }, { item: "pearl", qty: 1 }], outputs: [{ item: "wire_line", qty: 1 }] },
+
+    // ---- Tackle Crafting: foraging tools ----
+    { id: "craft_tin_spade", skill: "crafting", name: "Craft Tin Spade", levelReq: 8, durationSec: 4, xp: 18, inputs: [{ item: "driftwood", qty: 2 }, { item: "hook", qty: 1 }], outputs: [{ item: "tin_spade", qty: 1 }] },
+    { id: "craft_steel_spade", skill: "crafting", name: "Craft Steel Spade", levelReq: 28, durationSec: 6, xp: 46, inputs: [{ item: "driftwood", qty: 4 }, { item: "hook", qty: 2 }, { item: "seashell", qty: 1 }], outputs: [{ item: "steel_spade", qty: 1 }] },
+    { id: "craft_moon_spade", skill: "crafting", name: "Craft Moon Spade", levelReq: 48, durationSec: 9, xp: 85, inputs: [{ item: "driftwood", qty: 4 }, { item: "hook", qty: 2 }, { item: "pearl", qty: 2 }], outputs: [{ item: "moon_spade", qty: 1 }] },
+
+    // ---- Tackle Crafting: cooking tools ----
+    { id: "craft_iron_pan", skill: "crafting", name: "Craft Iron Pan", levelReq: 12, durationSec: 4, xp: 22, inputs: [{ item: "driftwood", qty: 3 }, { item: "hook", qty: 1 }], outputs: [{ item: "iron_pan", qty: 1 }] },
+    { id: "craft_copper_pot", skill: "crafting", name: "Craft Copper Pot", levelReq: 32, durationSec: 7, xp: 55, inputs: [{ item: "driftwood", qty: 4 }, { item: "hook", qty: 2 }, { item: "seashell", qty: 1 }], outputs: [{ item: "copper_pot", qty: 1 }] },
+    { id: "craft_chefs_set", skill: "crafting", name: "Craft Chef's Set", levelReq: 52, durationSec: 9, xp: 92, inputs: [{ item: "driftwood", qty: 4 }, { item: "hook", qty: 2 }, { item: "pearl", qty: 2 }], outputs: [{ item: "chefs_set", qty: 1 }] },
+
+    // ---- Tackle Crafting: crafting tools ----
+    { id: "craft_whittling_kit", skill: "crafting", name: "Craft Whittling Kit", levelReq: 6, durationSec: 3.5, xp: 16, inputs: [{ item: "driftwood", qty: 2 }, { item: "hook", qty: 1 }], outputs: [{ item: "whittling_kit", qty: 1 }] },
+    { id: "craft_toolbench_kit", skill: "crafting", name: "Craft Toolbench Kit", levelReq: 26, durationSec: 6, xp: 44, inputs: [{ item: "driftwood", qty: 4 }, { item: "hook", qty: 2 }, { item: "seashell", qty: 1 }], outputs: [{ item: "toolbench_kit", qty: 1 }] },
+    { id: "craft_masters_kit", skill: "crafting", name: "Craft Master's Kit", levelReq: 46, durationSec: 8.5, xp: 82, inputs: [{ item: "driftwood", qty: 4 }, { item: "hook", qty: 2 }, { item: "pearl", qty: 2 }], outputs: [{ item: "masters_kit", qty: 1 }] },
+
+    // ---- Tackle Crafting: enhancement protection ----
+    { id: "craft_blessed_lacquer", skill: "crafting", name: "Craft Blessed Lacquer", levelReq: 40, durationSec: 5, xp: 60, inputs: [{ item: "pearl", qty: 1 }, { item: "kelp", qty: 2 }], outputs: [{ item: "blessed_lacquer", qty: 1 }] },
+
     // ---- Cooking (fish -> dishes) ----
     { id: "cook_grilled_trout", skill: "cooking", name: "Cook Grilled Trout", levelReq: 1, durationSec: 3.5, xp: 20, inputs: [{ item: "brown_trout", qty: 1 }], outputs: [{ item: "grilled_trout", qty: 1 }] },
     { id: "cook_salmon_fillet", skill: "cooking", name: "Cook Salmon Fillet", levelReq: 15, durationSec: 4, xp: 35, inputs: [{ item: "lake_salmon", qty: 1 }], outputs: [{ item: "salmon_fillet", qty: 1 }] },
@@ -209,8 +265,20 @@ export const gameData: GameData = {
   ],
 
   shop: [
-    { item: "worm_bait", price: 5 },
-    { item: "bamboo_rod", price: 60 },
+    // Consumables — priced at roughly 4x sell value, so coins always have a floor use.
+    { item: "worm_bait", price: 12 },
+    { item: "grub_lure", price: 32 },
+    { item: "driftwood", price: 4 },
+    { item: "fishing_line", price: 16 },
+    { item: "hook", price: 20 },
+    { item: "kelp", price: 8 },
+    { item: "seashell", price: 12 },
+    { item: "worm", price: 4 },
+    { item: "grub", price: 8 },
+    // Tier-1 gear, for a coin-rich player who'd rather buy than grind the first tier.
+    { item: "bamboo_rod", price: 160 },
+    { item: "wooden_reel", price: 180 },
+    { item: "kelp_line", price: 80 },
   ],
 
   achievements: [
@@ -228,6 +296,39 @@ export const gameData: GameData = {
     { id: "line_cook", name: "Line Cook", desc: "Reach Cooking level 20.", icon: "🍳", coins: 250, cond: { type: "skill", skill: "cooking", value: 20 } },
     { id: "tinkerer", name: "Tinkerer", desc: "Reach Tackle Crafting level 20.", icon: "🛠️", coins: 250, cond: { type: "skill", skill: "crafting", value: 20 } },
     { id: "beachcomber", name: "Beachcomber", desc: "Reach Foraging level 20.", icon: "🧺", coins: 250, cond: { type: "skill", skill: "foraging", value: 20 } },
+  ],
+
+  boathouseRooms: [
+    {
+      id: "dock", name: "Dock", icon: "⚓", desc: "+2% fishing efficiency per level.",
+      maxLevel: 5, baseCoins: 500, costGrowth: 2.2,
+      baseMaterials: [{ item: "driftwood", qty: 30 }, { item: "fishing_line", qty: 10 }],
+    },
+    {
+      id: "smokery", name: "Smokery", icon: "🐟", desc: "+2% cooking efficiency per level.",
+      maxLevel: 5, baseCoins: 500, costGrowth: 2.2,
+      baseMaterials: [{ item: "driftwood", qty: 25 }, { item: "kelp", qty: 15 }],
+    },
+    {
+      id: "workshop", name: "Workshop", icon: "🔨", desc: "+2% crafting efficiency and +1pp rod enhancement success per level.",
+      maxLevel: 5, baseCoins: 500, costGrowth: 2.2,
+      baseMaterials: [{ item: "driftwood", qty: 20 }, { item: "hook", qty: 10 }],
+    },
+    {
+      id: "bait_garden", name: "Bait Garden", icon: "🪴", desc: "Passively grows worms & grubs into the Shared Bank (caps at 12h of backlog).",
+      maxLevel: 5, baseCoins: 400, costGrowth: 2.2,
+      baseMaterials: [{ item: "worm", qty: 20 }, { item: "grub", qty: 10 }],
+    },
+    {
+      id: "chart_room", name: "Chart Room", icon: "🗺️", desc: "Hotspot events last +30s and grant +2% rare chance per level.",
+      maxLevel: 5, baseCoins: 800, costGrowth: 2.2,
+      baseMaterials: [{ item: "seashell", qty: 5 }, { item: "pearl", qty: 1 }],
+    },
+    {
+      id: "trophy_hall", name: "Trophy Hall", icon: "🏆", desc: "+0.5% global rare chance per level; displays your biggest catches.",
+      maxLevel: 5, baseCoins: 1000, costGrowth: 2.2,
+      baseMaterials: [{ item: "pearl", qty: 2 }],
+    },
   ],
 
   guildRanks: [

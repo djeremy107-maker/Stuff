@@ -1,4 +1,5 @@
 import { gameData } from "./content/gameData.js";
+import { chartRoomBonus } from "./boathouse.js";
 
 // A live "hotspot" event: one zone gets boosted rare chance + faster casts for
 // a short window. It's the same for both players — a shared reason to go fish
@@ -26,14 +27,16 @@ export function getActiveEvent(now = Date.now()): FishingEvent | null {
 function rollEvent(): FishingEvent {
   const zone = gameData.zones[Math.floor(Math.random() * gameData.zones.length)];
   const now = Date.now();
+  const chart = chartRoomBonus(); // the shared Chart Room makes hotspots longer & richer
+  const durationMs = EVENT_DURATION_MS + chart.extraDurationMs;
   return {
     zoneId: zone.id,
     zoneName: zone.name,
     icon: zone.icon,
-    rareBonus: 0.15,
+    rareBonus: 0.15 + chart.extraRareBonus,
     speedMult: 0.85,
     startsAt: now,
-    endsAt: now + EVENT_DURATION_MS,
+    endsAt: now + durationMs,
   };
 }
 
@@ -46,7 +49,7 @@ export function startEvents(onChange: (event: FishingEvent | null) => void) {
     setTimeout(() => {
       current = null;
       onChange(null);
-    }, EVENT_DURATION_MS);
+    }, current.endsAt - current.startsAt);
   };
   // Kick one off shortly after boot, then on the interval.
   setTimeout(begin, 20_000);

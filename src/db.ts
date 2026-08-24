@@ -42,7 +42,31 @@ db.exec(`
     id         INTEGER PRIMARY KEY CHECK (id = 1),
     items_json TEXT NOT NULL DEFAULT '{}'
   );
-  INSERT OR IGNORE INTO bank (id, items_json) VALUES (1, '{}');`);
+  INSERT OR IGNORE INTO bank (id, items_json) VALUES (1, '{}');
+
+  -- Shared coin purse: funds Boathouse construction, topped up by either player.
+  CREATE TABLE IF NOT EXISTS purse (
+    id    INTEGER PRIMARY KEY CHECK (id = 1),
+    coins INTEGER NOT NULL DEFAULT 0
+  );
+  INSERT OR IGNORE INTO purse (id, coins) VALUES (1, 0);
+
+  -- The shared Boathouse: room levels, built together from the Bank + Purse.
+  CREATE TABLE IF NOT EXISTS boathouse (
+    id             INTEGER PRIMARY KEY CHECK (id = 1),
+    rooms_json     TEXT NOT NULL DEFAULT '{}',
+    bait_last_tick INTEGER NOT NULL DEFAULT 0
+  );
+  INSERT OR IGNORE INTO boathouse (id, rooms_json, bait_last_tick) VALUES (1, '{}', 0);
+
+  -- Trophy Hall records: the biggest catch of each species, by either player.
+  CREATE TABLE IF NOT EXISTS records (
+    species        TEXT PRIMARY KEY,
+    holder_user_id INTEGER NOT NULL,
+    holder_name    TEXT NOT NULL,
+    size           REAL NOT NULL,
+    ts             INTEGER NOT NULL
+  );`);
 
 // Lightweight migrations for databases created before a column existed.
 function ensureColumn(table: string, column: string, ddl: string) {
@@ -53,6 +77,7 @@ ensureColumn("characters", "buff_json", "buff_json TEXT NOT NULL DEFAULT ''");
 ensureColumn("characters", "achievements_json", "achievements_json TEXT NOT NULL DEFAULT '[]'");
 ensureColumn("characters", "queue_json", "queue_json TEXT NOT NULL DEFAULT '[]'");
 ensureColumn("characters", "loadout_json", "loadout_json TEXT NOT NULL DEFAULT '{}'");
+ensureColumn("characters", "enhancements_json", "enhancements_json TEXT NOT NULL DEFAULT '{}'");
 
 db.exec(`
 
@@ -93,6 +118,7 @@ export interface CharacterRow {
   achievements_json: string;
   queue_json: string;
   loadout_json: string;
+  enhancements_json: string;
   updated_at: number;
 }
 

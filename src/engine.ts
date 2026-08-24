@@ -3,6 +3,16 @@ import { gameData, zonesById, actionsById, shopByItem } from "./content/gameData
 import type { SkillId } from "./content/types.js";
 import { levelForXp, levelProgress } from "./leveling.js";
 import { getActiveEvent } from "./events.js";
+import { boathouseSkillEfficiency, boathouseRareBonus, boathouseEnhanceBonus } from "./boathouse.js";
+import { checkAndSetRecord } from "./records.js";
+
+// Tool-equipped support skills (foraging/crafting/cooking each get one tool slot).
+type ToolSkill = "foraging" | "crafting" | "cooking";
+const TOOL_SLOT: Record<ToolSkill, "toolForaging" | "toolCrafting" | "toolCooking"> = {
+  foraging: "toolForaging",
+  crafting: "toolCrafting",
+  cooking: "toolCooking",
+};
 
 // Cap offline processing so nobody returns to millions of years of loot.
 const OFFLINE_CAP_MS = Number(process.env.OFFLINE_CAP_HOURS ?? 24) * 3600 * 1000;
@@ -90,7 +100,11 @@ export interface PlayerState {
   skills: Record<string, number>;
   inventory: Record<string, number>;
   bestiary: Record<string, { count: number; max: number }>;
-  equipped: { rod?: string; lure?: string };
+  equipped: {
+    rod?: string; lure?: string; reel?: string; line?: string;
+    toolForaging?: string; toolCrafting?: string; toolCooking?: string;
+  };
+  enhancements: Record<string, number>; // rod item id -> enhancement level (0-10)
   loadout: { food?: string; drink?: string }; // provisions auto-consumed from your bag
   foodBuff: BuffState | null;
   drinkBuff: BuffState | null;
@@ -102,14 +116,14 @@ export interface PlayerState {
 
 const selectChar = db.prepare<[number]>("SELECT * FROM characters WHERE user_id = ?");
 const upsertChar = db.prepare(`
-  INSERT INTO characters (user_id, name, coins, skills_json, inventory_json, bestiary_json, equipped_json, action_json, buff_json, achievements_json, queue_json, loadout_json, updated_at)
-  VALUES (@user_id, @name, @coins, @skills_json, @inventory_json, @bestiary_json, @equipped_json, @action_json, @buff_json, @achievements_json, @queue_json, @loadout_json, @updated_at)
+  INSERT INTO characters (user_id, name, coins, skills_json, inventory_json, bestiary_json, equipped_json, action_json, buff_json, achievements_json, queue_json, loadout_json, enhancements_json, updated_at)
+  VALUES (@user_id, @name, @coins, @skills_json, @inventory_json, @bestiary_json, @equipped_json, @action_json, @buff_json, @achievements_json, @queue_json, @loadout_json, @enhancements_json, @updated_at)
   ON CONFLICT(user_id) DO UPDATE SET
     coins=@coins, skills_json=@skills_json, inventory_json=@inventory_json,
     bestiary_json=@bestiary_json, equipped_json=@equipped_json,
     action_json=@action_json, buff_json=@buff_json,
     achievements_json=@achievements_json, queue_json=@queue_json,
-    loadout_json=@loadout_json, updated_at=@updated_at
+    loadout_json=@loadout_json, enhancements_json=@enhancements_json, updated_at=@updated_at
 `);
 
 export function loadPlayer(userId: number): PlayerState | null {
@@ -124,6 +138,7 @@ export function loadPlayer(userId: number): PlayerState | null {
     inventory: JSON.parse(row.inventory_json),
     bestiary: JSON.parse(row.bestiary_json),
     equipped: JSON.parse(row.equipped_json),
+    enhancements: row.enhancements_json ? JSON.parse(row.enhancements_json) : {},
     loadout: row.loadout_json ? JSON.parse(row.loadout_json) : {},
     foodBuff: buffs.food,
     drinkBuff: buffs.drink,
@@ -181,6 +196,7 @@ export function savePlayer(p: PlayerState): void {
     achievements_json: JSON.stringify(p.achievements),
     queue_json: JSON.stringify(p.queue),
     loadout_json: JSON.stringify(p.loadout),
+    enhancements_json: JSON.stringify(p.enhancements),
     updated_at: p.updatedAt,
   });
 }
@@ -197,6 +213,7 @@ export function createCharacter(userId: number, name: string): PlayerState {
     inventory: {},
     bestiary: {},
     equipped: {},
+    enhancements: {},
     loadout: {},
     foodBuff: null,
     drinkBuff: null,
@@ -336,6 +353,7 @@ export interface ProgressSummary {
   newAchievements: { id: string; name: string; icon: string; coins: number }[];
   levelUps: { skill: string; from: number; to: number }[];
   notableCatches: { item: string; rarity: string; size: number }[]; // epic/legendary
+  newRecords: { item: string; size: number; previousHolder: string | null }[]; // Trophy Hall
   guildLevelUp: { from: number; to: number } | null;
   stopped?: "no_inputs";
 }
@@ -346,12 +364,34 @@ function levelSpeedFactor(levelsAbove: number): number {
   return 1 - Math.min(0.15, 0.0025 * Math.max(0, levelsAbove));
 }
 
+// Effective rod stats after enhancement: speed improves 2%/plus (multiplicative,
+// compounding), rare bonus +1pp/plus.
+function rodStatsFor(p: PlayerState, rodId: string): { speedMult: number; rareBonus: number; plus: number } {
+  const def = gameData.items[rodId];
+  const plus = p.enhancements[rodId] || 0;
+  return {
+    speedMult: (def?.rodSpeedMult ?? 1) * Math.pow(0.98, plus),
+    rareBonus: (def?.rodRareBonus ?? 0) + 0.01 * plus,
+    plus,
+  };
+}
+
 // Efficiency: chance(s) to instantly repeat a completion for free extra output.
-// +1% per level above the action's requirement, plus the shared Guild bonus and
-// an active drink's bonus.
+// +1% per level above the action's requirement, plus the shared Guild bonus, an
+// active drink's bonus, an equipped tool's bonus (support skills), an equipped
+// reel's bonus (fishing only), and the matching Boathouse room's bonus.
 export function efficiencyFor(p: PlayerState, skill: SkillId, levelReq: number, clock: number): number {
   const drinkBonus = p.drinkBuff && clock < p.drinkBuff.expiresAt ? p.drinkBuff.efficiencyBonus : 0;
-  return 0.01 * Math.max(0, skillLevel(p, skill) - levelReq) + guildEfficiencyBonus() + drinkBonus;
+  const reelBonus = skill === "fishing" && p.equipped.reel ? gameData.items[p.equipped.reel]?.reelEfficiency ?? 0 : 0;
+  const toolBonus = skill in TOOL_SLOT ? gameData.items[p.equipped[TOOL_SLOT[skill as ToolSkill]] ?? ""]?.toolEfficiency ?? 0 : 0;
+  return (
+    0.01 * Math.max(0, skillLevel(p, skill) - levelReq) +
+    guildEfficiencyBonus() +
+    drinkBonus +
+    reelBonus +
+    toolBonus +
+    boathouseSkillEfficiency(skill)
+  );
 }
 // XP multiplier from an active drink at this moment in sim-time.
 function xpMultAt(p: PlayerState, clock: number): number {
@@ -361,20 +401,21 @@ function xpMultAt(p: PlayerState, clock: number): number {
 // Per-completion duration + rare bonus for a single cast at absolute time `clock`.
 function fishParamsAt(p: PlayerState, zoneId: string, clock: number): { durMs: number; rareBonus: number } {
   const zone = zonesById.get(zoneId)!;
-  const rod = p.equipped.rod ? gameData.items[p.equipped.rod] : undefined;
+  const rod = p.equipped.rod ? rodStatsFor(p, p.equipped.rod) : { speedMult: 1, rareBonus: 0 };
   const levelsAbove = skillLevel(p, "fishing") - zone.levelReq;
-  const base = zone.baseTimeSec * (rod?.rodSpeedMult ?? 1) * levelSpeedFactor(levelsAbove) * (1 - guildSpeedBonus()) * 1000;
+  const base = zone.baseTimeSec * rod.speedMult * levelSpeedFactor(levelsAbove) * (1 - guildSpeedBonus()) * 1000;
   const event = getActiveEvent();
   const buffed = p.foodBuff && clock < p.foodBuff.expiresAt;
   const eventOn = !!event && event.zoneId === zoneId && clock >= event.startsAt && clock < event.endsAt;
   const durMs = base * (buffed ? p.foodBuff!.speedMult : 1) * (eventOn ? event!.speedMult : 1);
-  const rareBonus = (rod?.rodRareBonus ?? 0) + (buffed ? p.foodBuff!.rareBonus : 0) + (eventOn ? event!.rareBonus : 0);
+  const rareBonus = rod.rareBonus + (buffed ? p.foodBuff!.rareBonus : 0) + (eventOn ? event!.rareBonus : 0) + boathouseRareBonus();
   return { durMs, rareBonus };
 }
 
 // Duration for a support-skill (foraging/crafting/cooking) completion.
 function actionDurMs(p: PlayerState, def: { durationSec: number; skill: SkillId; levelReq: number }): number {
-  return def.durationSec * 1000 * levelSpeedFactor(skillLevel(p, def.skill) - def.levelReq);
+  const toolMult = def.skill in TOOL_SLOT ? gameData.items[p.equipped[TOOL_SLOT[def.skill as ToolSkill]] ?? ""]?.toolSpeedMult ?? 1 : 1;
+  return def.durationSec * 1000 * levelSpeedFactor(skillLevel(p, def.skill) - def.levelReq) * toolMult;
 }
 
 function hasInputs(p: PlayerState, def: { inputs: { item: string; qty: number }[] }): boolean {
@@ -403,7 +444,7 @@ function promoteNext(p: PlayerState): boolean {
 export function processElapsed(p: PlayerState, now: number): ProgressSummary {
   const summary: ProgressSummary = {
     completions: 0, bonus: 0, xpGained: {}, itemsGained: {}, coinsGained: 0,
-    newSpecies: [], newAchievements: [], levelUps: [], notableCatches: [], guildLevelUp: null,
+    newSpecies: [], newAchievements: [], levelUps: [], notableCatches: [], newRecords: [], guildLevelUp: null,
   };
   const addItemSum = (id: string, q: number) => (summary.itemsGained[id] = (summary.itemsGained[id] || 0) + q);
   const addXpSum = (s: string, x: number) => (summary.xpGained[s] = (summary.xpGained[s] || 0) + x);
@@ -431,6 +472,10 @@ export function processElapsed(p: PlayerState, now: number): ProgressSummary {
     const rarity = def?.rarity ?? "common";
     if (def?.category === "fish" && (rarity === "epic" || rarity === "legendary")) {
       summary.notableCatches.push({ item: species, rarity, size });
+    }
+    if (def?.category === "fish" && size > 0) {
+      const rec = checkAndSetRecord(species, size, p.userId, p.name);
+      if (rec.isRecord) summary.newRecords.push({ item: species, size, previousHolder: rec.previousHolder });
     }
     const xp = Math.round(gameData.rarityXp[rarity] * zone.xpMult * xpMult);
     grantXp(p, "fishing", xp);
@@ -474,11 +519,13 @@ export function processElapsed(p: PlayerState, now: number): ProgressSummary {
       const need = durMs - entry.progressMs;
       if (remaining < need) { entry.progressMs += remaining; clock += remaining; remaining = 0; break; }
 
-      // The timed cast: equipped lure adds to rare chance and is consumed.
+      // The timed cast: equipped lure adds to rare chance and is (usually) consumed —
+      // an equipped line has a chance to save it.
       let rareBonus = baseRare;
       const lure = p.equipped.lure ? gameData.items[p.equipped.lure] : undefined;
       if (lure?.baitRareBonus && (p.inventory[p.equipped.lure!] || 0) > 0) {
-        removeItem(p, p.equipped.lure!, 1);
+        const lineSave = p.equipped.line ? gameData.items[p.equipped.line]?.lineBaitSave ?? 0 : 0;
+        if (Math.random() >= lineSave) removeItem(p, p.equipped.lure!, 1);
         rareBonus += lure.baitRareBonus;
       }
       const xpMult = xpMultAt(p, clock);
@@ -642,6 +689,97 @@ export function unequipLure(p: PlayerState) {
   p.updatedAt = Date.now();
 }
 
+export function equipReel(p: PlayerState, item: string): { ok: boolean; error?: string } {
+  const def = gameData.items[item];
+  if (!def || def.category !== "reel") return { ok: false, error: "That isn't a reel." };
+  if ((p.inventory[item] || 0) < 1) return { ok: false, error: "You don't own that." };
+  p.equipped.reel = item;
+  p.updatedAt = Date.now();
+  return { ok: true };
+}
+export function unequipReel(p: PlayerState) {
+  delete p.equipped.reel;
+  p.updatedAt = Date.now();
+}
+
+export function equipLine(p: PlayerState, item: string): { ok: boolean; error?: string } {
+  const def = gameData.items[item];
+  if (!def || def.category !== "line") return { ok: false, error: "That isn't a line." };
+  if ((p.inventory[item] || 0) < 1) return { ok: false, error: "You don't own that." };
+  p.equipped.line = item;
+  p.updatedAt = Date.now();
+  return { ok: true };
+}
+export function unequipLine(p: PlayerState) {
+  delete p.equipped.line;
+  p.updatedAt = Date.now();
+}
+
+export function equipTool(p: PlayerState, skill: ToolSkill, item: string): { ok: boolean; error?: string } {
+  const def = gameData.items[item];
+  if (!def || def.category !== "tool" || def.toolSkill !== skill) return { ok: false, error: "That tool doesn't fit there." };
+  if ((p.inventory[item] || 0) < 1) return { ok: false, error: "You don't own that." };
+  p.equipped[TOOL_SLOT[skill]] = item;
+  p.updatedAt = Date.now();
+  return { ok: true };
+}
+export function unequipTool(p: PlayerState, skill: ToolSkill) {
+  delete p.equipped[TOOL_SLOT[skill]];
+  p.updatedAt = Date.now();
+}
+
+// ---- Rod enhancement (+1..+10) ----
+// Success chance by target level; cozy contract — a failed attempt only costs
+// the materials/coins, never the rod itself.
+const ENHANCE_SUCCESS = [0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.45, 0.4, 0.35, 0.3, 0.25];
+const ENHANCE_MAX = 10;
+function enhanceCost(targetLevel: number) {
+  return {
+    driftwood: targetLevel,
+    fishing_line: targetLevel,
+    pearl: Math.ceil(targetLevel / 3),
+    coins: 25 * targetLevel * targetLevel,
+  };
+}
+export function enhanceInfo(p: PlayerState, rodId: string) {
+  const def = gameData.items[rodId];
+  if (!def || def.category !== "rod") return null;
+  const plus = p.enhancements[rodId] || 0;
+  if (plus >= ENHANCE_MAX) return { plus, maxed: true as const };
+  const target = plus + 1;
+  const cost = enhanceCost(target);
+  const chance = Math.min(1, ENHANCE_SUCCESS[target] + boathouseEnhanceBonus());
+  return { plus, maxed: false as const, target, cost, chance };
+}
+export function enhanceRod(p: PlayerState, rodId: string, useProtection: boolean): { ok: boolean; error?: string; success?: boolean; newPlus?: number; chance?: number } {
+  const def = gameData.items[rodId];
+  if (!def || def.category !== "rod") return { ok: false, error: "That isn't a rod." };
+  const owned = p.equipped.rod === rodId || (p.inventory[rodId] || 0) > 0;
+  if (!owned) return { ok: false, error: "You don't own that rod." };
+  const plus = p.enhancements[rodId] || 0;
+  if (plus >= ENHANCE_MAX) return { ok: false, error: "Already at max enhancement." };
+  const target = plus + 1;
+  const cost = enhanceCost(target);
+  if ((p.inventory.driftwood || 0) < cost.driftwood) return { ok: false, error: "Not enough driftwood." };
+  if ((p.inventory.fishing_line || 0) < cost.fishing_line) return { ok: false, error: "Not enough fishing line." };
+  if ((p.inventory.pearl || 0) < cost.pearl) return { ok: false, error: "Not enough pearls." };
+  if (p.coins < cost.coins) return { ok: false, error: "Not enough coins." };
+  const useLacquer = useProtection && (p.inventory.blessed_lacquer || 0) > 0;
+  if (useProtection && !useLacquer) return { ok: false, error: "No Blessed Lacquer." };
+
+  removeItem(p, "driftwood", cost.driftwood);
+  removeItem(p, "fishing_line", cost.fishing_line);
+  removeItem(p, "pearl", cost.pearl);
+  p.coins -= cost.coins;
+  if (useLacquer) removeItem(p, "blessed_lacquer", 1);
+
+  const chance = Math.min(1, ENHANCE_SUCCESS[target] + boathouseEnhanceBonus() + (useLacquer ? 0.15 : 0));
+  const success = Math.random() < chance;
+  if (success) p.enhancements[rodId] = target;
+  p.updatedAt = Date.now();
+  return { ok: true, success, newPlus: p.enhancements[rodId] || 0, chance };
+}
+
 export function sellItem(p: PlayerState, item: string, qty: number): { ok: boolean; error?: string; coins?: number } {
   const def = gameData.items[item];
   if (!def || def.value == null) return { ok: false, error: "That can't be sold." };
@@ -651,8 +789,14 @@ export function sellItem(p: PlayerState, item: string, qty: number): { ok: boole
   removeItem(p, item, qty);
   const gained = def.value * qty;
   p.coins += gained;
-  if (p.equipped.rod === item && (p.inventory[item] || 0) < 1) delete p.equipped.rod;
-  if (p.equipped.lure === item && (p.inventory[item] || 0) < 1) delete p.equipped.lure;
+  const left = p.inventory[item] || 0;
+  if (left < 1) {
+    if (p.equipped.rod === item) delete p.equipped.rod;
+    if (p.equipped.lure === item) delete p.equipped.lure;
+    if (p.equipped.reel === item) delete p.equipped.reel;
+    if (p.equipped.line === item) delete p.equipped.line;
+    for (const slot of Object.values(TOOL_SLOT)) if (p.equipped[slot] === item) delete p.equipped[slot];
+  }
   p.updatedAt = Date.now();
   return { ok: true, coins: gained };
 }
@@ -736,6 +880,8 @@ export function serializePlayer(p: PlayerState, now = Date.now()) {
     inventory: p.inventory,
     bestiary: p.bestiary,
     equipped: p.equipped,
+    enhancements: p.enhancements,
+    rodStats: p.equipped.rod ? rodStatsFor(p, p.equipped.rod) : null,
     loadout: p.loadout,
     foodBuff,
     drinkBuff,
