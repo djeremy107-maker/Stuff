@@ -7,7 +7,7 @@ rods, and level up a shared **Anglers' Guild** together.
 
 Built for two people (you + your girlfriend), and designed to keep growing.
 
-## What's in it (v1.2)
+## What's in it (v1.3)
 
 - **6 fishing zones** — Backyard Pond → Riverbank → Misty Lake → Coral Harbor →
   Deep Sea → Abyssal Trench, each unlocking with your Fishing level.
@@ -110,6 +110,13 @@ Built for two people (you + your girlfriend), and designed to keep growing.
 - **A firsts board** 🥇 — whoever lands a shiny or a weather/time exclusive
   first gets permanent credit on the Collection page, right next to the
   Trophy Hall's biggest-size record — a second flex axis alongside size.
+- **Titles** 🎖️ — select achievements (species discovery, catch totals,
+  rarity milestones, and a level-99 mastery achievement for each skill) grant
+  an equippable title worn next to your name in the topbar and your
+  partner's party list — pure bragging rights, no stat effect.
+- **Total-level frames** — your name gets a glowing bronze/silver/gold/
+  diamond treatment as your four skills' combined total level climbs toward
+  the 396 cap, visible to your partner live in the party list.
 
 ## Run it locally
 

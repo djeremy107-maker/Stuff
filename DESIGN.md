@@ -259,8 +259,33 @@ Melvor's per-action progression layer, fishing-flavored) — not started.
       run first on deploy day.
 - [ ] Quiet bad-luck protection on legendaries — not started.
 
-**Tier 4 — Identity & titles**: equippable titles, cosmetic skill-99 badges,
-total-level frames — not started.
+**Tier 4 — Identity & titles (complete):**
+- [x] **Equippable titles** — rather than a separate unlock-tracking system,
+      `AchievementDef` gained an optional `title?: string`. Eligibility reuses
+      the existing `p.achievements` array (already permanent/monotonic — no
+      risk of a title becoming un-earnable later), and `p.equipped.title`
+      stores the achievement id itself, resolved to display text via
+      `gameData.achievements` on both server (presence) and client. New
+      `equipTitle`/`unequipTitle` in `engine.ts`; equip/unequip buttons live
+      right on the Achievements page next to each titled achievement.
+- [x] **Skill-99 mastery achievements** — added one per skill (`fishing_99`,
+      `foraging_99`, `crafting_99`, `cooking_99`), filling a real gap (no
+      achievement previously rewarded a maxed skill) and doubling as the
+      "cosmetic skill-99 badge": the party list shows a 👑 + skill-icon
+      crown for every skill a player has maxed, sourced from a new
+      `skillLevels` map added to the presence payload.
+      *(No separate `evaluateAchievements` change was needed — “skill”
+      conditions already existed for any threshold, 99 included.)*
+- [x] **Total-level frames** — a pure client-side computation (four skills
+      summed, max 396), no new server state: bronze/silver/gold/diamond CSS
+      classes on the name wherever it's shown (topbar, party list), diamond
+      reusing the existing shiny-glow keyframe animation. Presence already
+      carried `totalLevel`, so the partner's frame updates live with no
+      extra plumbing.
+      *Deliberately skipped chat-message frames/titles — the `messages`
+      table doesn't snapshot the sender's level/title at send time, and
+      adding that felt like scope creep for a cosmetic-only feature; topbar
+      + party list already cover "flex to your partner."*
 
 **Tier 5 — Daily rhythm**: folds into Phase 3's Notice Board; gain-only
 streaks — not started.

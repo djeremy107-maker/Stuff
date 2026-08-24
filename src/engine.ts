@@ -134,6 +134,7 @@ export interface PlayerState {
   equipped: {
     rod?: string; lure?: string; reel?: string; line?: string;
     toolForaging?: string; toolCrafting?: string; toolCooking?: string;
+    title?: string; // an unlocked achievement id, worn as a display title
   };
   enhancements: Record<string, number>; // rod item id -> enhancement level (0-10)
   loadout: { food?: string; drink?: string }; // provisions auto-consumed from your bag
@@ -823,6 +824,20 @@ export function equipTool(p: PlayerState, skill: ToolSkill, item: string): { ok:
 }
 export function unequipTool(p: PlayerState, skill: ToolSkill) {
   delete p.equipped[TOOL_SLOT[skill]];
+  p.updatedAt = Date.now();
+}
+
+// ---- Titles (cosmetic — earned achievements you can wear as a name badge) ----
+export function equipTitle(p: PlayerState, achievementId: string): { ok: boolean; error?: string } {
+  const def = gameData.achievements.find((a) => a.id === achievementId);
+  if (!def || !def.title) return { ok: false, error: "That's not a title." };
+  if (!p.achievements.includes(achievementId)) return { ok: false, error: "You haven't earned that title yet." };
+  p.equipped.title = achievementId;
+  p.updatedAt = Date.now();
+  return { ok: true };
+}
+export function unequipTitle(p: PlayerState) {
+  delete p.equipped.title;
   p.updatedAt = Date.now();
 }
 

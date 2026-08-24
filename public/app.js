@@ -294,12 +294,35 @@ function onStateUpdate() {
 function renderTopbar() {
   const p = state.player;
   if (!p) return;
-  $("#stat-name").textContent = p.name;
+  const nameEl = $("#stat-name");
+  const totalLevel = Object.values(p.skills).reduce((sum, s) => sum + s.level, 0);
+  nameEl.className = "stat" + frameClass(totalLevel);
+  nameEl.innerHTML = titleBadgeHtml(p.equipped.title) + escapeHtml(p.name);
+  nameEl.title = `Total level ${totalLevel}`;
   $("#stat-coins").textContent = `🪙 ${p.coins.toLocaleString()}`;
   const rod = p.equipped.rod;
   $("#stat-rod").textContent = rod ? `${iconFor(rod)} ${nameFor(rod)}` : "🖐️ Bare hands";
   updateBuffChips();
   renderWorldStat();
+}
+
+// ---------------------------------------------------------------- Titles & total-level frames
+// A cosmetic flex layer: a total-level "frame" tier (from 4 skills, max 396)
+// and an optional title earned from — and worn alongside — an achievement.
+function frameClass(totalLevel) {
+  if (totalLevel >= 396) return " frame-diamond";
+  if (totalLevel >= 300) return " frame-gold";
+  if (totalLevel >= 200) return " frame-silver";
+  if (totalLevel >= 100) return " frame-bronze";
+  return "";
+}
+function titleTextFor(achievementId) {
+  if (!achievementId) return null;
+  return state.game.achievements.find((a) => a.id === achievementId)?.title ?? null;
+}
+function titleBadgeHtml(achievementId) {
+  const t = titleTextFor(achievementId);
+  return t ? `<span class="title-badge">${escapeHtml(t)}</span> ` : "";
 }
 
 // ---------------------------------------------------------------- Shared world clock
@@ -994,9 +1017,14 @@ function renderParty() {
   list.innerHTML = "";
   for (const pl of state.presence) {
     const c = el("div", "pcard");
+    const maxedSkills = state.game.skills.filter((s) => (pl.skillLevels?.[s.id] ?? 0) >= 99);
+    const crowns = maxedSkills.length
+      ? `<span class="skill-crowns" title="${maxedSkills.map((s) => s.name).join(", ")} maxed">${maxedSkills.map((s) => `👑${s.icon}`).join("")}</span>`
+      : "";
+    const titleHtml = pl.title ? `<span class="title-badge">${escapeHtml(pl.title)}</span> ` : "";
     c.innerHTML = `
-      <div class="prow"><span class="dot ${pl.online ? "on" : ""}"></span><span class="pname">${escapeHtml(pl.name)}</span></div>
-      <div class="pmeta">🎣 ${pl.fishingLevel} · Total ${pl.totalLevel} · 📖 ${pl.speciesCaught} · ${pl.online ? "online" : "offline"}</div>
+      <div class="prow"><span class="dot ${pl.online ? "on" : ""}"></span><span class="pname${frameClass(pl.totalLevel)}">${titleHtml}${escapeHtml(pl.name)}</span></div>
+      <div class="pmeta">🎣 ${pl.fishingLevel} · Total ${pl.totalLevel} · 📖 ${pl.speciesCaught} · ${pl.online ? "online" : "offline"} ${crowns}</div>
       <div class="pact">${pl.activity || "💤 Resting"}</div>
     `;
     list.appendChild(c);
@@ -1031,16 +1059,25 @@ function escapeHtml(s) {
 function renderAchievements(panel) {
   const p = state.player;
   const unlocked = new Set(p.achievements || []);
+  const equippedTitle = p.equipped.title;
   panel.appendChild(el("div", "panel-head", `<h2>🏆 Achievements</h2><span class="lvl">${unlocked.size}/${state.game.achievements.length}</span>`));
-  panel.appendChild(el("p", "panel-blurb", "Goals to chase while you fish. Each one pays out coins when you earn it."));
+  panel.appendChild(el("p", "panel-blurb", "Goals to chase while you fish. Each one pays out coins when you earn it — some also unlock a title you can wear next to your name."));
   const grid = el("div", "col-grid");
   for (const a of state.game.achievements) {
     const got = unlocked.has(a.id);
-    const item = el("div", "col-item" + (got ? "" : " uncaught"));
+    const equipped = equippedTitle === a.id;
+    const item = el("div", "col-item" + (got ? "" : " uncaught") + (equipped ? " glow-shiny" : ""));
+    const titleLine = a.title ? `<div class="ci-record ci-title-tag">🎖️ Title: “${a.title}”</div>` : "";
     item.innerHTML = `
       <div class="ci-top"><span class="ci-icon">${got ? a.icon : "🔒"}</span><span class="ci-name">${a.name}</span></div>
       <div class="ci-meta">${a.desc}<br/><span style="color:var(--accent-2)">🪙 ${a.coins}</span> ${got ? "· ✅ earned" : ""}</div>
+      ${titleLine}
     `;
+    if (got && a.title) {
+      const btn = el("button", "title-btn", equipped ? "★ Equipped — click to unequip" : "Equip title");
+      btn.onclick = () => send(equipped ? { type: "unequip_title" } : { type: "equip_title", achievementId: a.id });
+      item.appendChild(btn);
+    }
     grid.appendChild(item);
   }
   panel.appendChild(grid);

@@ -28,6 +28,8 @@ import {
   unequipLine,
   equipTool,
   unequipTool,
+  equipTitle,
+  unequipTitle,
   enhanceRod,
   sellItem,
   buyItem,
@@ -119,15 +121,21 @@ function buildPresence() {
   const players = rows.map((row) => {
     const skills = JSON.parse(row.skills_json) as Record<string, number>;
     const bestiary = JSON.parse(row.bestiary_json || "{}") as Record<string, { count: number; max: number }>;
-    const totalLevel = gameData.skills.reduce((sum, s) => sum + levelForXp(skills[s.id] || 0), 0);
+    const skillLevels: Record<string, number> = {};
+    for (const s of gameData.skills) skillLevels[s.id] = levelForXp(skills[s.id] || 0);
+    const totalLevel = Object.values(skillLevels).reduce((sum, lvl) => sum + lvl, 0);
     const speciesCaught = Object.keys(bestiary).length;
     const action = row.action_json ? JSON.parse(row.action_json) : null;
+    const equipped = row.equipped_json ? JSON.parse(row.equipped_json) : {};
+    const titleDef = equipped.title ? gameData.achievements.find((a) => a.id === equipped.title) : null;
     return {
       userId: row.user_id,
       name: row.name,
       online: connections.has(row.user_id),
-      fishingLevel: levelForXp(skills.fishing || 0),
+      fishingLevel: skillLevels.fishing ?? 1,
       totalLevel,
+      skillLevels,
+      title: titleDef?.title ?? null,
       speciesCaught,
       coins: row.coins,
       activity: activityLabel(action),
@@ -342,6 +350,12 @@ wss.on("connection", (ws, req) => {
         });
         break;
       }
+      case "equip_title":
+        withPlayer(userId, (p) => ({ actionResult: equipTitle(p, String(msg.achievementId)) }));
+        break;
+      case "unequip_title":
+        withPlayer(userId, (p) => void unequipTitle(p));
+        break;
       case "enhance":
         withPlayer(userId, (p) => ({ actionResult: enhanceRod(p, String(msg.rodId), !!msg.useProtection) }));
         break;

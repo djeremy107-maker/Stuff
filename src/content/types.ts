@@ -117,6 +117,7 @@ export interface AchievementDef {
   desc: string;
   icon: string;
   coins: number; // coin reward on unlock
+  title?: string; // an equippable title granted alongside the coins, if set
   cond:
     | { type: "discover"; value: number } // species discovered
     | { type: "catch_total"; value: number } // total fish caught (personal)

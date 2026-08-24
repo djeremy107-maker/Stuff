@@ -241,6 +241,25 @@ input:focus { outline: none; border-color: var(--accent); }
 .pcard .pact { font-size: .82rem; margin-top: 4px; }
 .pcard .phpbar { height: 6px; background: var(--bg); border-radius: 4px; overflow: hidden; margin-top: 6px; border: 1px solid var(--line); }
 .pcard .phpbar > span { display: block; height: 100%; background: var(--hp); }
+.skill-crowns { margin-left: 4px; }
+
+/* ---------- Titles & total-level frames (Identity) ---------- */
+.title-badge {
+  display: inline-block; background: var(--bg); border: 1px solid var(--accent-2); color: var(--accent-2);
+  border-radius: 6px; padding: 0 6px; font-size: .7rem; font-weight: 700; vertical-align: middle; margin-right: 2px;
+}
+.pname.frame-bronze, .stat.frame-bronze { color: #cd8a4a; text-shadow: 0 0 6px rgba(205,138,74,.5); }
+.pname.frame-silver, .stat.frame-silver { color: #c7cfdb; text-shadow: 0 0 6px rgba(199,207,219,.6); }
+.pname.frame-gold, .stat.frame-gold { color: #f0c866; text-shadow: 0 0 8px rgba(240,200,102,.7); }
+.pname.frame-diamond, .stat.frame-diamond {
+  color: #bdeeff; text-shadow: 0 0 10px rgba(189,238,255,.8), 0 0 18px rgba(185,140,240,.5);
+  animation: glow-pulse-shiny 3s linear infinite;
+}
+.title-btn {
+  display: block; width: 100%; margin-top: 8px; background: var(--bg); border: 1px solid var(--accent-2);
+  color: var(--accent-2); border-radius: 8px; padding: 6px; font-size: .78rem; cursor: pointer;
+}
+.ci-title-tag { color: var(--accent-2); }
 
 #chat-log { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; font-size: .85rem; margin-bottom: 8px; }
 .msg .cname { color: var(--accent); font-weight: 600; margin-right: 5px; }
