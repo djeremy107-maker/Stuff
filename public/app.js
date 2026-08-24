@@ -78,6 +78,10 @@ function sfxShiny() {
   tone(1760, .26, .35, { type: "sine", gain: .15 });
 }
 function sfxNotify() { tone(700, 0, .08, { type: "triangle", gain: .08 }); tone(900, .05, .1, { type: "triangle", gain: .07 }); }
+function sfxPrestige() {
+  tone(330, 0, .18, { gain: .13 }); tone(415, .12, .18, { gain: .13 }); tone(494, .24, .18, { gain: .13 });
+  tone(660, .36, .5, { gain: .17 }); tone(880, .5, .7, { type: "triangle", gain: .16 });
+}
 function sfxError() { tone(300, 0, .12, { type: "triangle", gain: .09 }); tone(220, .08, .16, { type: "triangle", gain: .09 }); }
 
 // A one-time "unlock" nudge — browsers block audio until a user gesture.
@@ -272,9 +276,12 @@ function connectWs() {
       state.firsts = msg.firsts || [];
       if (state.tab === "collection") renderPanel();
     } else if (msg.type === "celebration") {
-      // A shared moment (Guild level-up / milestone) — everyone sees the same fanfare at once.
+      // A shared moment (Guild level-up / milestone / a partner's prestige) —
+      // everyone sees the same fanfare at once, including the person who
+      // triggered it (so it's not also handled off the local actionResult).
       if (msg.kind === "guildLevelUp") celebrateGuildLevelUp(msg.data);
       else if (msg.kind === "guildMilestone") celebrateGuildMilestone(msg.data);
+      else if (msg.kind === "prestige") celebratePrestige(msg.data);
     } else if (msg.type === "chat_history") {
       $("#chat-log").innerHTML = "";
       msg.messages.forEach(addChatMsg);
@@ -340,7 +347,7 @@ function renderTopbar() {
   const nameEl = $("#stat-name");
   const totalLevel = Object.values(p.skills).reduce((sum, s) => sum + s.level, 0);
   nameEl.className = "stat" + frameClass(totalLevel);
-  nameEl.innerHTML = titleBadgeHtml(p.equipped.title) + escapeHtml(p.name);
+  nameEl.innerHTML = titleBadgeHtml(p.equipped.title) + escapeHtml(p.name) + prestigeBadgeHtml(p.prestige.level);
   nameEl.title = `Total level ${totalLevel}`;
   $("#stat-coins").textContent = `🪙 ${p.coins.toLocaleString()}`;
   const rod = p.equipped.rod;
@@ -366,6 +373,9 @@ function titleTextFor(achievementId) {
 function titleBadgeHtml(achievementId) {
   const t = titleTextFor(achievementId);
   return t ? `<span class="title-badge">${escapeHtml(t)}</span> ` : "";
+}
+function prestigeBadgeHtml(level) {
+  return level > 0 ? ` <span class="prestige-stars" title="Prestige ${level}">${"⭐".repeat(Math.min(level, 5))}</span>` : "";
 }
 
 // ---------------------------------------------------------------- Shared world clock
@@ -426,7 +436,7 @@ function renderNav() {
   }
   const extra = $("#extra-nav");
   extra.innerHTML = "";
-  for (const [id, icon, label] of [["collection", "📖", "Collection"], ["achievements", "🏆", "Achievements"], ["notice_board", "📋", "Merchant's Dock"], ["bank", "🏦", "Shared Bank"], ["boathouse", "🏠", "Boathouse"], ["shop", "🛒", "Shop"]]) {
+  for (const [id, icon, label] of [["collection", "📖", "Collection"], ["achievements", "🏆", "Achievements"], ["prestige", "✨", "Prestige"], ["notice_board", "📋", "Merchant's Dock"], ["bank", "🏦", "Shared Bank"], ["boathouse", "🏠", "Boathouse"], ["shop", "🛒", "Shop"]]) {
     const item = el("div", "nav-item" + (state.tab === id ? " active" : ""));
     item.innerHTML = `<span class="nicon">${icon}</span><span>${label}</span>`;
     item.onclick = () => selectTab(id);
@@ -446,6 +456,7 @@ function renderPanel() {
   panel.innerHTML = "";
   if (state.tab === "collection") return renderCollection(panel);
   if (state.tab === "achievements") return renderAchievements(panel);
+  if (state.tab === "prestige") return renderPrestige(panel);
   if (state.tab === "shop") return renderShop(panel);
   if (state.tab === "bank") return renderBank(panel);
   if (state.tab === "boathouse") return renderBoathouse(panel);
@@ -678,6 +689,63 @@ function renderCollection(panel) {
     wrap.appendChild(grid);
     panel.appendChild(wrap);
   }
+}
+
+// ---- Prestige (the "Master Angler" rebirth) ----
+function renderPrestige(panel) {
+  const pr = state.player.prestige;
+  const head = el("div", "panel-head", `<h2>✨ Prestige</h2><span class="lvl">Level ${pr.level}</span>`);
+  head.appendChild(legendButton());
+  panel.appendChild(head);
+  panel.appendChild(el("p", "panel-blurb",
+    `Rebirth once all four skills hit level ${pr.requirement}: every skill resets to level 1, and in exchange you keep a permanent +${Math.round(PRESTIGE_PCT)}% efficiency bonus — forever, stacking with every future prestige. Nothing else changes: coins, gear, achievements, titles, your Collection, and every shared system (Guild, Boathouse, Bank) are completely untouched.`));
+
+  const bonusBox = el("div", "prestige-box");
+  bonusBox.innerHTML = `
+    <div class="prestige-stat"><span class="prestige-num">+${Math.round(pr.bonus * 100)}%</span><span class="muted">efficiency, account-wide, right now</span></div>
+    <div class="prestige-stat"><span class="prestige-num">+${Math.round(pr.nextBonus * 100)}%</span><span class="muted">efficiency after your next prestige</span></div>
+  `;
+  panel.appendChild(bonusBox);
+
+  panel.appendChild(el("h3", "bank-sub", "Requirements"));
+  const grid = el("div", "col-grid");
+  for (const s of pr.skills) {
+    const pct = Math.min(1, s.level / pr.requirement);
+    const item = el("div", "col-item" + (s.level >= pr.requirement ? " glow-shiny" : ""));
+    item.innerHTML = `
+      <div class="ci-top"><span class="ci-icon">${s.icon}</span><span class="ci-name">${s.name}</span></div>
+      <div class="ci-meta">Level ${s.level} / ${pr.requirement}${s.level >= pr.requirement ? " · ✅ ready" : ""}</div>
+      <div class="skill-xpbar"><span style="width:${(pct * 100).toFixed(1)}%"></span></div>
+    `;
+    grid.appendChild(item);
+  }
+  panel.appendChild(grid);
+
+  const btn = el("button", "primary prestige-btn" + (pr.ready ? "" : " disabled"), pr.ready ? "🌟 Prestige now" : `🔒 Reach level ${pr.requirement} in every skill`);
+  if (pr.ready) btn.onclick = openPrestigeConfirm;
+  else btn.disabled = true;
+  panel.appendChild(btn);
+}
+const PRESTIGE_PCT = 3; // keep in sync with engine.ts PRESTIGE_EFFICIENCY_PER_LEVEL (0.03)
+function openPrestigeConfirm() {
+  const pr = state.player.prestige;
+  const overlay = el("div", "modal-overlay");
+  overlay.innerHTML = `
+    <div class="modal">
+      <h2>🌟 Confirm rebirth</h2>
+      <p class="wb-row">This will reset <b>Fishing, Foraging, Tackle Crafting, and Cooking back to level 1</b> — right now, for good.</p>
+      <p class="wb-row">You'll keep everything else: coins, inventory, gear, achievements, titles, your Collection, and every shared system (Guild, Boathouse, Bank, records). Your permanent efficiency bonus goes from +${Math.round(pr.bonus * 100)}% to <b>+${Math.round(pr.nextBonus * 100)}%</b>, forever.</p>
+      <p class="wb-row muted">This can't be undone.</p>
+      <button class="primary wb-confirm">Yes, prestige now</button>
+      <button class="cancel-btn wb-close">Never mind</button>
+    </div>`;
+  overlay.querySelector(".wb-close").onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  overlay.querySelector(".wb-confirm").onclick = () => {
+    send({ type: "prestige" });
+    overlay.remove();
+  };
+  document.body.appendChild(overlay);
 }
 
 // ---- Shop ----
@@ -1069,7 +1137,7 @@ function renderParty() {
       : "";
     const titleHtml = pl.title ? `<span class="title-badge">${escapeHtml(pl.title)}</span> ` : "";
     c.innerHTML = `
-      <div class="prow"><span class="dot ${pl.online ? "on" : ""}"></span><span class="pname${frameClass(pl.totalLevel)}">${titleHtml}${escapeHtml(pl.name)}</span></div>
+      <div class="prow"><span class="dot ${pl.online ? "on" : ""}"></span><span class="pname${frameClass(pl.totalLevel)}">${titleHtml}${escapeHtml(pl.name)}${prestigeBadgeHtml(pl.prestige)}</span></div>
       <div class="pmeta">🎣 ${pl.fishingLevel} · Total ${pl.totalLevel} · 📖 ${pl.speciesCaught} · ${pl.online ? "online" : "offline"} ${crowns}</div>
       <div class="pact">${pl.activity || "💤 Resting"}</div>
     `;
@@ -1286,6 +1354,12 @@ function celebrateShiny(c) {
 function celebrateFirst(f) {
   toast(`🥇 First ever to catch ${iconFor(f.item)} ${nameFor(f.item)}!`);
   notify("🥇 First catch!", `You're the first to land ${nameFor(f.item)}.`, "first");
+}
+function celebratePrestige(data) {
+  sfxPrestige();
+  burstConfetti();
+  showFanfare(`🌟 PRESTIGE ${data.prestige}!<br><span class="ff-sub">${escapeHtml(data.name)} was reborn — permanently faster</span>`, "prestige", 5000);
+  notify("🌟 Prestige!", `${data.name} reached Prestige ${data.prestige}`, "prestige");
 }
 function celebrateGuildLevelUp(g) {
   sfxGuild();

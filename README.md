@@ -7,7 +7,7 @@ rods, and level up a shared **Anglers' Guild** together.
 
 Built for two people (you + your girlfriend), and designed to keep growing.
 
-## What's in it (v1.3)
+## What's in it (v1.4)
 
 - **6 fishing zones** — Backyard Pond → Riverbank → Misty Lake → Coral Harbor →
   Deep Sea → Abyssal Trench, each unlocking with your Fishing level.
@@ -117,6 +117,14 @@ Built for two people (you + your girlfriend), and designed to keep growing.
 - **Total-level frames** — your name gets a glowing bronze/silver/gold/
   diamond treatment as your four skills' combined total level climbs toward
   the 396 cap, visible to your partner live in the party list.
+- **Prestige — the Master Angler rebirth** 🌟 — once all four skills hit
+  level 99, rebirth: every skill resets to level 1, and in exchange you keep
+  a permanent +3%/prestige efficiency bonus, stacking with every future
+  rebirth. Nothing else resets — coins, gear, achievements, titles, your
+  Collection, and every shared system (Guild, Boathouse, Bank) are
+  completely untouched. A prestige is a witnessed moment: both of you see
+  the same fanfare the instant it happens, and your star count shows next
+  to your name everywhere.
 
 ## Run it locally
 

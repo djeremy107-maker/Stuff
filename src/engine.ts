@@ -1,7 +1,7 @@
 import { db, type CharacterRow } from "./db.js";
 import { gameData, zonesById, actionsById, shopByItem } from "./content/gameData.js";
 import type { SkillId } from "./content/types.js";
-import { levelForXp, levelProgress } from "./leveling.js";
+import { levelForXp, levelProgress, MAX_LEVEL } from "./leveling.js";
 import { getActiveEvent } from "./events.js";
 import { boathouseSkillEfficiency, boathouseRareBonus, boathouseEnhanceBonus } from "./boathouse.js";
 import { checkAndSetRecord } from "./records.js";
@@ -141,6 +141,7 @@ export interface PlayerState {
   foodBuff: BuffState | null;
   drinkBuff: BuffState | null;
   achievements: string[];
+  prestige: number; // times reborn — resets skills for a permanent efficiency bonus
   action: ActionState | null;
   queue: QueueEntry[];
   updatedAt: number;
@@ -148,14 +149,15 @@ export interface PlayerState {
 
 const selectChar = db.prepare<[number]>("SELECT * FROM characters WHERE user_id = ?");
 const upsertChar = db.prepare(`
-  INSERT INTO characters (user_id, name, coins, skills_json, inventory_json, bestiary_json, equipped_json, action_json, buff_json, achievements_json, queue_json, loadout_json, enhancements_json, updated_at)
-  VALUES (@user_id, @name, @coins, @skills_json, @inventory_json, @bestiary_json, @equipped_json, @action_json, @buff_json, @achievements_json, @queue_json, @loadout_json, @enhancements_json, @updated_at)
+  INSERT INTO characters (user_id, name, coins, skills_json, inventory_json, bestiary_json, equipped_json, action_json, buff_json, achievements_json, queue_json, loadout_json, enhancements_json, prestige, updated_at)
+  VALUES (@user_id, @name, @coins, @skills_json, @inventory_json, @bestiary_json, @equipped_json, @action_json, @buff_json, @achievements_json, @queue_json, @loadout_json, @enhancements_json, @prestige, @updated_at)
   ON CONFLICT(user_id) DO UPDATE SET
     coins=@coins, skills_json=@skills_json, inventory_json=@inventory_json,
     bestiary_json=@bestiary_json, equipped_json=@equipped_json,
     action_json=@action_json, buff_json=@buff_json,
     achievements_json=@achievements_json, queue_json=@queue_json,
-    loadout_json=@loadout_json, enhancements_json=@enhancements_json, updated_at=@updated_at
+    loadout_json=@loadout_json, enhancements_json=@enhancements_json,
+    prestige=@prestige, updated_at=@updated_at
 `);
 
 export function loadPlayer(userId: number): PlayerState | null {
@@ -175,6 +177,7 @@ export function loadPlayer(userId: number): PlayerState | null {
     foodBuff: buffs.food,
     drinkBuff: buffs.drink,
     achievements: row.achievements_json ? JSON.parse(row.achievements_json) : [],
+    prestige: row.prestige ?? 0,
     action: normalizeAction(row.action_json ? JSON.parse(row.action_json) : null),
     queue: row.queue_json ? JSON.parse(row.queue_json) : [],
     updatedAt: row.updated_at,
@@ -229,6 +232,7 @@ export function savePlayer(p: PlayerState): void {
     queue_json: JSON.stringify(p.queue),
     loadout_json: JSON.stringify(p.loadout),
     enhancements_json: JSON.stringify(p.enhancements),
+    prestige: p.prestige,
     updated_at: p.updatedAt,
   });
 }
@@ -250,6 +254,7 @@ export function createCharacter(userId: number, name: string): PlayerState {
     foodBuff: null,
     drinkBuff: null,
     achievements: [],
+    prestige: 0,
     action: null,
     queue: [],
     updatedAt: now,
@@ -419,10 +424,20 @@ function rodStatsFor(p: PlayerState, rodId: string): { speedMult: number; rareBo
   };
 }
 
+// Prestige: a permanent, account-wide efficiency bonus that survives a
+// rebirth (unlike a skill level, which the rebirth resets) — so it's the one
+// number that keeps compounding across as many prestiges as you're willing
+// to grind for.
+const PRESTIGE_EFFICIENCY_PER_LEVEL = 0.03;
+export function prestigeEfficiencyBonus(p: PlayerState): number {
+  return p.prestige * PRESTIGE_EFFICIENCY_PER_LEVEL;
+}
+
 // Efficiency: chance(s) to instantly repeat a completion for free extra output.
 // +1% per level above the action's requirement, plus the shared Guild bonus, an
 // active drink's bonus, an equipped tool's bonus (support skills), an equipped
-// reel's bonus (fishing only), and the matching Boathouse room's bonus.
+// reel's bonus (fishing only), the matching Boathouse room's bonus, and a
+// permanent per-prestige bonus.
 export function efficiencyFor(p: PlayerState, skill: SkillId, levelReq: number, clock: number): number {
   const drinkBonus = p.drinkBuff && clock < p.drinkBuff.expiresAt ? p.drinkBuff.efficiencyBonus : 0;
   const reelBonus = skill === "fishing" && p.equipped.reel ? gameData.items[p.equipped.reel]?.reelEfficiency ?? 0 : 0;
@@ -433,7 +448,8 @@ export function efficiencyFor(p: PlayerState, skill: SkillId, levelReq: number, 
     drinkBonus +
     reelBonus +
     toolBonus +
-    boathouseSkillEfficiency(skill)
+    boathouseSkillEfficiency(skill) +
+    prestigeEfficiencyBonus(p)
   );
 }
 // XP multiplier from an active drink at this moment in sim-time.
@@ -841,6 +857,33 @@ export function unequipTitle(p: PlayerState) {
   p.updatedAt = Date.now();
 }
 
+// ---- Prestige (the "Master Angler" rebirth) ----
+// Resets skill levels only — nothing else. Coins, inventory, equipment,
+// bestiary, achievements/titles, and every shared/coop system (Guild,
+// Boathouse, Bank, records) are untouched, so a rebirth never costs you
+// anything you or your partner would actually miss; it's purely "start the
+// leveling climb over, permanently faster than before."
+export function prestigeInfo(p: PlayerState) {
+  const skills = gameData.skills.map((s) => ({ id: s.id, name: s.name, icon: s.icon, level: skillLevel(p, s.id) }));
+  const ready = skills.every((s) => s.level >= MAX_LEVEL);
+  return {
+    level: p.prestige,
+    bonus: prestigeEfficiencyBonus(p),
+    nextBonus: (p.prestige + 1) * PRESTIGE_EFFICIENCY_PER_LEVEL,
+    ready,
+    requirement: MAX_LEVEL,
+    skills,
+  };
+}
+export function doPrestige(p: PlayerState): { ok: boolean; error?: string; newPrestige?: number } {
+  const info = prestigeInfo(p);
+  if (!info.ready) return { ok: false, error: `All four skills must be level ${MAX_LEVEL} first.` };
+  for (const s of gameData.skills) p.skills[s.id] = 0;
+  p.prestige += 1;
+  p.updatedAt = Date.now();
+  return { ok: true, newPrestige: p.prestige };
+}
+
 // ---- Rod enhancement (+1..+10) ----
 // Success chance by target level; cozy contract — a failed attempt only costs
 // the materials/coins, never the rod itself.
@@ -999,6 +1042,7 @@ export function serializePlayer(p: PlayerState, now = Date.now()) {
     foodBuff,
     drinkBuff,
     achievements: p.achievements,
+    prestige: prestigeInfo(p),
     action,
     queue,
   };

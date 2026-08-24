@@ -30,6 +30,7 @@ import {
   unequipTool,
   equipTitle,
   unequipTitle,
+  doPrestige,
   enhanceRod,
   sellItem,
   buyItem,
@@ -136,6 +137,7 @@ function buildPresence() {
       totalLevel,
       skillLevels,
       title: titleDef?.title ?? null,
+      prestige: row.prestige ?? 0,
       speciesCaught,
       coins: row.coins,
       activity: activityLabel(action),
@@ -356,6 +358,21 @@ wss.on("connection", (ws, req) => {
       case "unequip_title":
         withPlayer(userId, (p) => void unequipTitle(p));
         break;
+      case "prestige": {
+        let prestiged = 0;
+        let name = "";
+        withPlayer(userId, (p) => {
+          const result = doPrestige(p);
+          if (result.ok) { prestiged = result.newPrestige!; name = p.name; }
+          return { actionResult: result };
+        });
+        if (prestiged > 0) {
+          systemMsg(userId, `🌟 ${name} was reborn — Prestige ${prestiged}! Every skill starts over, permanently faster.`);
+          broadcast({ type: "celebration", kind: "prestige", data: { name, prestige: prestiged } });
+          broadcastPresence();
+        }
+        break;
+      }
       case "enhance":
         withPlayer(userId, (p) => ({ actionResult: enhanceRod(p, String(msg.rodId), !!msg.useProtection) }));
         break;

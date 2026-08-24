@@ -96,6 +96,7 @@ input:focus { outline: none; border-color: var(--accent); }
   padding: 10px; font-weight: 600;
 }
 .error { color: var(--danger); min-height: 1.2em; font-size: .85rem; margin: 10px 0 0; }
+button:disabled { opacity: .5; cursor: not-allowed; }
 
 /* ---------- Layout ---------- */
 #game { height: 100vh; display: flex; flex-direction: column; }
@@ -271,6 +272,14 @@ input:focus { outline: none; border-color: var(--accent); }
 .ci-chip-first { color: var(--xp); border-color: var(--xp); }
 .ci-chip-shiny { color: #f0b866; border-color: #f0b866; }
 .ci-chip-title { color: var(--accent-2); border-color: var(--accent-2); }
+.prestige-stars { filter: drop-shadow(0 0 3px rgba(240,200,102,.7)); }
+
+/* ---------- Prestige panel ---------- */
+.prestige-box { display: flex; gap: 24px; flex-wrap: wrap; background: var(--bg-2); border: 1px solid var(--accent-2); border-radius: var(--radius); padding: 16px; margin: 12px 0 20px; }
+.prestige-stat { display: flex; flex-direction: column; gap: 2px; }
+.prestige-num { font-size: 1.6rem; font-weight: 700; color: var(--accent-2); }
+.prestige-btn { width: 100%; margin-top: 16px; padding: 14px; font-size: 1rem; }
+.fanfare.prestige { border-color: var(--accent-2); color: var(--accent-2); box-shadow: 0 12px 60px rgba(240,184,102,.45); }
 
 /* ---------- Legend modal ---------- */
 .legend-h { font-size: .9rem; margin: 16px 0 6px; color: var(--text); }

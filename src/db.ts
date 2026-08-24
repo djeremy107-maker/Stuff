@@ -95,6 +95,7 @@ ensureColumn("characters", "achievements_json", "achievements_json TEXT NOT NULL
 ensureColumn("characters", "queue_json", "queue_json TEXT NOT NULL DEFAULT '[]'");
 ensureColumn("characters", "loadout_json", "loadout_json TEXT NOT NULL DEFAULT '{}'");
 ensureColumn("characters", "enhancements_json", "enhancements_json TEXT NOT NULL DEFAULT '{}'");
+ensureColumn("characters", "prestige", "prestige INTEGER NOT NULL DEFAULT 0");
 ensureColumn("guild", "marks", "marks INTEGER NOT NULL DEFAULT 0");
 ensureColumn("guild", "legendary_catches", "legendary_catches INTEGER NOT NULL DEFAULT 0");
 ensureColumn("guild", "unlocked_milestones_json", "unlocked_milestones_json TEXT NOT NULL DEFAULT '[]'");
@@ -139,6 +140,7 @@ export interface CharacterRow {
   queue_json: string;
   loadout_json: string;
   enhancements_json: string;
+  prestige: number;
   updated_at: number;
 }
 

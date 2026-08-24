@@ -324,7 +324,28 @@ streaks — not started.
 - [ ] **Weather & time-of-day** affecting which fish bite.
 
 ### Later / polish
-- [ ] Prestige layer ("master angler" rebirth) for long-term idle depth.
+- [x] **Prestige — the Master Angler rebirth** — gated on all four skills at
+      level 99 (`prestigeInfo()`/`doPrestige()` in `engine.ts`). Deliberately
+      resets *only* `p.skills` — coins, inventory, equipment, bestiary,
+      achievements/titles, and every shared/coop system (Guild, Boathouse,
+      Bank, records) are untouched, so a rebirth never costs either player
+      anything they'd actually miss. In exchange, `p.prestige` (a new
+      `characters.prestige` column) grants a permanent, stacking
+      `+3%/prestige` term in `efficiencyFor()` — the "grant account
+      efficiency so it compounds with Phase 1" design brief, literally
+      implemented as one more addend in the existing efficiency formula.
+      A confirmation modal states plainly what resets and what doesn't
+      before the irreversible action fires — no surprise loss.
+      Celebrated as a shared moment: broadcasts the same `{type:"celebration",
+      kind:"prestige"}` message used for Guild events, so both players see
+      identical fanfare the instant it happens, not just the one who
+      prestiged. A small `⭐×N` badge (capped visually at 5, real count in
+      the tooltip) rides next to the name badge everywhere titles/frames
+      already show. Verified live: DB persistence of the reset skills +
+      incremented prestige, a server-side reject when attempted before
+      being ready (defense-in-depth beyond the disabled button), and the
+      partner's client receiving the celebration and updated party-list
+      star with no refresh.
 - [x] **Finishing coat** (art pass / sound / notifications / mobile polish) —
       no sprite budget, so "art pass" stayed CSS/motion: a drifting-bubble
       ambiance on `.auth-screen` (two layered `::before`/`::after` radial-
