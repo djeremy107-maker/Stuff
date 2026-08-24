@@ -60,8 +60,11 @@ to host it somewhere you can both reach:
 
 - **Fly.io** — `fly launch` uses the included `Dockerfile` and `fly.toml`. Add a
   volume so your save persists: `fly volumes create idyll_data --size 1`.
-- **Render / Railway** — build `npm install`, start `npm start`, mount a
-  persistent disk where `DB_PATH` points.
+- **Render** — a `render.yaml` Blueprint is included. In Render: **New →
+  Blueprint** → pick this repo → **Apply**. It's a **Web Service** (Node), build
+  `npm install`, start `npm start`, with a persistent disk mounted at `/var/data`
+  so your save survives deploys. (Saves need a paid Starter instance for the
+  disk; see the comments in `render.yaml` for a free-but-resets option.)
 - **A home server / Raspberry Pi** + a tunnel (Tailscale, Cloudflare Tunnel, or
   port-forwarding). You both hit the same URL.
 

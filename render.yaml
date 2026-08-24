@@ -1,0 +1,35 @@
+# Render Blueprint for Idyll.
+# In Render: New → Blueprint → pick this repo. It reads this file and sets
+# everything up. See the two options below.
+#
+# ─────────────────────────────────────────────────────────────────────────
+# OPTION A (recommended): saves persist. Needs a paid instance (~$7/mo) because
+# a persistent Disk requires a paid plan. This is what's configured below.
+#
+# OPTION B (free, but saves reset): to try it for free first, in this file
+#   1. change `plan: starter` to `plan: free`
+#   2. delete the whole `disk:` block
+#   3. change the DB_PATH value to `/tmp/game.sqlite`
+# Your world will reset on every deploy / spin-down, but it's a $0 way to test.
+# ─────────────────────────────────────────────────────────────────────────
+
+services:
+  - type: web
+    name: idyll
+    runtime: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22.22.2"
+      - key: DB_PATH
+        value: /var/data/game.sqlite
+      - key: OFFLINE_CAP_HOURS
+        value: "24"
+    disk:
+      name: idyll-data
+      mountPath: /var/data
+      sizeGB: 1
