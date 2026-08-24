@@ -7,6 +7,7 @@ import { boathouseSkillEfficiency, boathouseRareBonus, boathouseEnhanceBonus } f
 import { checkAndSetRecord } from "./records.js";
 import { checkAndSetFirst } from "./firsts.js";
 import { worldStateAt } from "./world.js";
+import { zoneMasteryLevelForXp, zoneMasteryProgress, masteryXpForRarity, zoneMasteryRareBonus, zoneMasterySpeedMult } from "./zoneMastery.js";
 
 // Tool-equipped support skills (foraging/crafting/cooking each get one tool slot).
 type ToolSkill = "foraging" | "crafting" | "cooking";
@@ -143,6 +144,7 @@ export interface PlayerState {
   achievements: string[];
   prestige: number; // times reborn — resets skills for a permanent efficiency bonus
   pity: Record<string, number>; // zone id -> consecutive non-legendary catches, for bad-luck protection
+  zoneMastery: Record<string, number>; // zone id -> mastery XP (independent of the shared Fishing skill)
   action: ActionState | null;
   queue: QueueEntry[];
   updatedAt: number;
@@ -150,15 +152,15 @@ export interface PlayerState {
 
 const selectChar = db.prepare<[number]>("SELECT * FROM characters WHERE user_id = ?");
 const upsertChar = db.prepare(`
-  INSERT INTO characters (user_id, name, coins, skills_json, inventory_json, bestiary_json, equipped_json, action_json, buff_json, achievements_json, queue_json, loadout_json, enhancements_json, prestige, pity_json, updated_at)
-  VALUES (@user_id, @name, @coins, @skills_json, @inventory_json, @bestiary_json, @equipped_json, @action_json, @buff_json, @achievements_json, @queue_json, @loadout_json, @enhancements_json, @prestige, @pity_json, @updated_at)
+  INSERT INTO characters (user_id, name, coins, skills_json, inventory_json, bestiary_json, equipped_json, action_json, buff_json, achievements_json, queue_json, loadout_json, enhancements_json, prestige, pity_json, zone_mastery_json, updated_at)
+  VALUES (@user_id, @name, @coins, @skills_json, @inventory_json, @bestiary_json, @equipped_json, @action_json, @buff_json, @achievements_json, @queue_json, @loadout_json, @enhancements_json, @prestige, @pity_json, @zone_mastery_json, @updated_at)
   ON CONFLICT(user_id) DO UPDATE SET
     coins=@coins, skills_json=@skills_json, inventory_json=@inventory_json,
     bestiary_json=@bestiary_json, equipped_json=@equipped_json,
     action_json=@action_json, buff_json=@buff_json,
     achievements_json=@achievements_json, queue_json=@queue_json,
     loadout_json=@loadout_json, enhancements_json=@enhancements_json,
-    prestige=@prestige, pity_json=@pity_json, updated_at=@updated_at
+    prestige=@prestige, pity_json=@pity_json, zone_mastery_json=@zone_mastery_json, updated_at=@updated_at
 `);
 
 export function loadPlayer(userId: number): PlayerState | null {
@@ -180,6 +182,7 @@ export function loadPlayer(userId: number): PlayerState | null {
     achievements: row.achievements_json ? JSON.parse(row.achievements_json) : [],
     prestige: row.prestige ?? 0,
     pity: row.pity_json ? JSON.parse(row.pity_json) : {},
+    zoneMastery: row.zone_mastery_json ? JSON.parse(row.zone_mastery_json) : {},
     action: normalizeAction(row.action_json ? JSON.parse(row.action_json) : null),
     queue: row.queue_json ? JSON.parse(row.queue_json) : [],
     updatedAt: row.updated_at,
@@ -236,6 +239,7 @@ export function savePlayer(p: PlayerState): void {
     enhancements_json: JSON.stringify(p.enhancements),
     prestige: p.prestige,
     pity_json: JSON.stringify(p.pity),
+    zone_mastery_json: JSON.stringify(p.zoneMastery),
     updated_at: p.updatedAt,
   });
 }
@@ -259,6 +263,7 @@ export function createCharacter(userId: number, name: string): PlayerState {
     achievements: [],
     prestige: 0,
     pity: {},
+    zoneMastery: {},
     action: null,
     queue: [],
     updatedAt: now,
@@ -492,12 +497,13 @@ function fishParamsAt(p: PlayerState, zoneId: string, clock: number): { durMs: n
   const zone = zonesById.get(zoneId)!;
   const rod = p.equipped.rod ? rodStatsFor(p, p.equipped.rod) : { speedMult: 1, rareBonus: 0 };
   const levelsAbove = skillLevel(p, "fishing") - zone.levelReq;
-  const base = zone.baseTimeSec * rod.speedMult * levelSpeedFactor(levelsAbove) * (1 - guildSpeedBonus()) * 1000;
+  const masteryLevel = zoneMasteryLevelForXp(p.zoneMastery[zoneId] || 0);
+  const base = zone.baseTimeSec * rod.speedMult * levelSpeedFactor(levelsAbove) * (1 - guildSpeedBonus()) * zoneMasterySpeedMult(masteryLevel) * 1000;
   const event = getActiveEvent();
   const buffed = p.foodBuff && clock < p.foodBuff.expiresAt;
   const eventOn = !!event && event.zoneId === zoneId && clock >= event.startsAt && clock < event.endsAt;
   const durMs = base * (buffed ? p.foodBuff!.speedMult : 1) * (eventOn ? event!.speedMult : 1);
-  const rareBonus = rod.rareBonus + (buffed ? p.foodBuff!.rareBonus : 0) + (eventOn ? event!.rareBonus : 0) + boathouseRareBonus();
+  const rareBonus = rod.rareBonus + (buffed ? p.foodBuff!.rareBonus : 0) + (eventOn ? event!.rareBonus : 0) + boathouseRareBonus() + zoneMasteryRareBonus(masteryLevel);
   return { durMs, rareBonus };
 }
 
@@ -575,6 +581,9 @@ export function processElapsed(p: PlayerState, now: number): ProgressSummary {
     if (def?.category === "fish" && (rarity === "epic" || rarity === "legendary")) {
       summary.notableCatches.push({ item: species, rarity, size });
       if (rarity === "legendary") legendaryCatches++;
+    }
+    if (def?.category === "fish") {
+      p.zoneMastery[zone.id] = (p.zoneMastery[zone.id] || 0) + masteryXpForRarity(rarity);
     }
     if (shiny) {
       summary.shinyCatches.push({ item: species, size });
@@ -1077,6 +1086,7 @@ export function serializePlayer(p: PlayerState, now = Date.now()) {
     achievements: p.achievements,
     prestige: prestigeInfo(p),
     pity: pityInfo(p),
+    zoneMastery: Object.fromEntries(gameData.zones.map((z) => [z.id, zoneMasteryProgress(p.zoneMastery[z.id] || 0)])),
     action,
     queue,
   };

@@ -217,8 +217,26 @@ no fake near-misses, no loss-based streaks.
       a large offline catch-up) folds the same data into one enriched
       "while you were away" recap instead of firing a flurry of banners.
 
-**Tier 2 — Zone Mastery** (per-zone 1–50 level fed by catches in that zone,
-Melvor's per-action progression layer, fishing-flavored) — not started.
+**Tier 2 — Zone Mastery (complete):**
+- [x] A second, independent 1–50 progression track per zone
+      (`src/zoneMastery.ts`), fed only by catches made in that zone —
+      deliberately decoupled from the shared Fishing level's 99-level curve
+      and from a zone's `xpMult` (which scales *Fishing* XP): mastery XP is
+      a flat per-rarity amount (common=1 … legendary=20) so it accrues at a
+      comparable per-catch rate everywhere, and a much shallower linear
+      curve (level 50 at ~7,800 cumulative XP) so it's reachable in a few
+      thousand catches in a zone you actually camp in — not tens of
+      thousands.
+      Grants +0.1pp rare chance and −0.1% cast time *in that zone* per
+      level (capped at level 50), wired into `fishParamsAt()` alongside
+      the rod/food/event/Boathouse bonuses it already combines with.
+      New `characters.zone_mastery_json` column; exposed per-zone via
+      `serializePlayer` and shown as a progress bar directly on the zone
+      card, with a legend entry explaining it's separate from the shared
+      skill level. Tested at the engine level (XP grants, level curve,
+      persistence, and — the one that actually proves the bonus is real —
+      a maxed-mastery player completing measurably more casts than a
+      fresh one over an identical time window).
 
 **Tier 3 — Chase content (complete):**
 - [x] **Shiny variants** — `SHINY_CHANCE = 1/450` in `engine.ts`, rolled

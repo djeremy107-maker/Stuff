@@ -7,7 +7,7 @@ rods, and level up a shared **Anglers' Guild** together.
 
 Built for two people (you + your girlfriend), and designed to keep growing.
 
-## What's in it (v1.5)
+## What's in it (v1.6)
 
 - **6 fishing zones** — Backyard Pond → Riverbank → Misty Lake → Coral Harbor →
   Deep Sea → Abyssal Trench, each unlocking with your Fishing level.
@@ -130,6 +130,11 @@ Built for two people (you + your girlfriend), and designed to keep growing.
   since the last one. The longer it's been, the better the odds get, and
   it's outright guaranteed by cast 1,500 — shown right on the zone card as
   a real, honest progress bar, not a hidden mechanic.
+- **Zone Mastery** 🎓 — a second, independent 1–50 progression track per
+  zone, fed only by catches made there (separate from the shared Fishing
+  level). Higher mastery grants a small permanent rare-chance boost and
+  faster casts in that specific zone — a reason to settle into a favorite
+  spot beyond just chasing the next skill level.
 
 ## Run it locally
 
