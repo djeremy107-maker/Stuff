@@ -17,12 +17,13 @@ import {
   dequeueAt,
   skipAction,
   stopAction,
-  setBait,
+  setLoadout,
   equipRod,
   unequipRod,
+  equipLure,
+  unequipLure,
   sellItem,
   buyItem,
-  eatDish,
   guildInfo,
   type PlayerState,
 } from "./engine.js";
@@ -194,24 +195,27 @@ wss.on("connection", (ws, req) => {
       case "stop":
         withPlayer(userId, (p) => void stopAction(p));
         break;
-      case "bait":
-        withPlayer(userId, (p) => void setBait(p, !!msg.active));
+      case "equip": {
+        const slot = msg.slot === "lure" ? "lure" : "rod";
+        withPlayer(userId, (p) => ({ actionResult: slot === "lure" ? equipLure(p, String(msg.item)) : equipRod(p, String(msg.item)) }));
         break;
-      case "equip":
-        withPlayer(userId, (p) => ({ actionResult: equipRod(p, String(msg.item)) }));
+      }
+      case "unequip": {
+        const slot = msg.slot === "lure" ? "lure" : "rod";
+        withPlayer(userId, (p) => void (slot === "lure" ? unequipLure(p) : unequipRod(p)));
         break;
-      case "unequip":
-        withPlayer(userId, (p) => void unequipRod(p));
-        break;
+      }
       case "sell":
         withPlayer(userId, (p) => ({ actionResult: sellItem(p, String(msg.item), Number(msg.qty ?? 1)) }));
         break;
       case "buy":
         withPlayer(userId, (p) => ({ actionResult: buyItem(p, String(msg.item), Number(msg.qty ?? 1)) }));
         break;
-      case "eat":
-        withPlayer(userId, (p) => ({ actionResult: eatDish(p, String(msg.item)) }));
+      case "loadout": {
+        const kind = msg.kind === "drink" ? "drink" : "food";
+        withPlayer(userId, (p) => ({ actionResult: setLoadout(p, kind, msg.item == null ? null : String(msg.item)) }));
         break;
+      }
       case "deposit":
         withPlayer(userId, (p) => ({ actionResult: deposit(p, String(msg.item), Number(msg.qty ?? 1)) }));
         broadcastBank();

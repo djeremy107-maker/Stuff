@@ -132,17 +132,9 @@ function effInfo(skillId, levelReq) {
   const lvl = state.player?.skills?.[skillId]?.level ?? 1;
   const above = Math.max(0, lvl - levelReq);
   const guildEff = state.guild?.efficiencyBonus || 0;
-  return { above, pct: Math.round((0.01 * above + guildEff) * 100) };
-}
-
-function bestBaitInBag() {
-  let best = null;
-  for (const [id, qty] of Object.entries(state.player.inventory)) {
-    if (qty <= 0) continue;
-    const d = itemDef(id);
-    if (d.baitRareBonus && (!best || d.baitRareBonus > best.bonus)) best = { id, bonus: d.baitRareBonus, qty };
-  }
-  return best;
+  const drink = state.player?.drinkBuff;
+  const drinkEff = drink ? drink.efficiencyBonus : 0;
+  return { above, pct: Math.round((0.01 * above + guildEff + drinkEff) * 100) };
 }
 
 // ---------------------------------------------------------------- State render
@@ -161,7 +153,7 @@ function renderTopbar() {
   $("#stat-coins").textContent = `🪙 ${p.coins.toLocaleString()}`;
   const rod = p.equipped.rod;
   $("#stat-rod").textContent = rod ? `${iconFor(rod)} ${nameFor(rod)}` : "🖐️ Bare hands";
-  updateBuffChip();
+  updateBuffChips();
 }
 
 function fmtTime(sec) {
@@ -170,16 +162,18 @@ function fmtTime(sec) {
   const s = sec % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
 }
-function updateBuffChip() {
-  const chip = $("#stat-buff");
-  const b = state.player?.buff;
+function renderBuffChip(chip, b, statsFn) {
   if (!b) return void chip.classList.add("hidden");
   const remaining = (b.expiresAt - Date.now()) / 1000;
   if (remaining <= 0) return void chip.classList.add("hidden");
   chip.classList.remove("hidden");
-  chip.innerHTML = `${b.icon} <b>${b.name}</b> <span class="muted">+${Math.round((1 - b.speedMult) * 100)}%⚡ +${Math.round(b.rareBonus * 100)}%✨</span> ${fmtTime(remaining)}`;
+  chip.innerHTML = `${b.icon} <b>${b.name}</b> <span class="muted">${statsFn(b)}</span> ${fmtTime(remaining)}`;
 }
-setInterval(updateBuffChip, 1000);
+function updateBuffChips() {
+  renderBuffChip($("#stat-food-buff"), state.player?.foodBuff, (b) => `+${Math.round((1 - b.speedMult) * 100)}%⚡ +${Math.round(b.rareBonus * 100)}%✨`);
+  renderBuffChip($("#stat-drink-buff"), state.player?.drinkBuff, (b) => b.xpMult > 1 ? `+${Math.round((b.xpMult - 1) * 100)}% xp` : `+${Math.round(b.efficiencyBonus * 100)}%⚡eff`);
+}
+setInterval(updateBuffChips, 1000);
 
 // ---------------------------------------------------------------- Nav
 function renderNav() {
@@ -254,24 +248,34 @@ function renderFishing(panel) {
   const skill = state.game.skills.find((s) => s.id === "fishing");
   skillHeader(panel, skill);
 
-  // Controls: rod + bait
+  // Controls: rod, lure, and provisions — all equipped/set from your Inventory below.
   const controls = el("div", "fish-controls");
   const rod = p.equipped.rod;
   const rodTxt = rod
     ? `${iconFor(rod)} <b>${nameFor(rod)}</b> <span class="muted">(−${Math.round((1 - itemDef(rod).rodSpeedMult) * 100)}% time, +${Math.round(itemDef(rod).rodRareBonus * 100)}% rare)</span>`
     : `<span class="muted">No rod — fishing bare-handed. Craft or buy a rod!</span>`;
-  const bait = bestBaitInBag();
-  const baitTxt = bait ? `${iconFor(bait.id)} ${nameFor(bait.id)} ×${bait.qty} (+${Math.round(bait.bonus * 100)}% rare)` : "no bait in bag";
+  const lure = p.equipped.lure;
+  const lureQty = lure ? (p.inventory[lure] || 0) : 0;
+  const lureTxt = lure
+    ? lureQty > 0
+      ? `${iconFor(lure)} <b>${nameFor(lure)}</b> ×${lureQty} <span class="muted">(+${Math.round(itemDef(lure).baitRareBonus * 100)}% rare per cast)</span>`
+      : `${iconFor(lure)} <b>${nameFor(lure)}</b> <span class="muted">— out of stock</span>`
+    : `<span class="muted">No lure equipped — equip bait from your Inventory below.</span>`;
+  const food = p.loadout.food;
+  const foodTxt = food
+    ? `${iconFor(food)} <b>${nameFor(food)}</b> ×${p.inventory[food] || 0} left`
+    : `<span class="muted">Not set — pick a dish in Inventory to auto-eat while fishing.</span>`;
+  const drink = p.loadout.drink;
+  const drinkTxt = drink
+    ? `${iconFor(drink)} <b>${nameFor(drink)}</b> ×${p.inventory[drink] || 0} left`
+    : `<span class="muted">Not set — brew a drink for efficiency/XP.</span>`;
   controls.innerHTML = `
     <div class="ctl">🎣 Rod: ${rodTxt}</div>
-    <label class="switch ctl">
-      <input type="checkbox" id="bait-toggle" ${p.baitActive ? "checked" : ""}/>
-      <span class="track"></span>
-      <span>Use bait <span class="muted">— ${baitTxt}</span></span>
-    </label>
+    <div class="ctl">🪝 Lure: ${lureTxt}</div>
+    <div class="ctl">🍽️ Food: ${foodTxt}</div>
+    <div class="ctl">🧉 Drink: ${drinkTxt}</div>
   `;
   panel.appendChild(controls);
-  $("#bait-toggle").onchange = (e) => send({ type: "bait", active: e.target.checked });
 
   queueControls(panel);
   const cards = el("div", "cards");
@@ -464,22 +468,37 @@ function renderInventory() {
   for (const [id, qty] of entries) {
     const d = itemDef(id);
     const isRod = d.category === "rod";
-    const equipped = isRod && p.equipped.rod === id;
+    const isBait = d.category === "bait";
+    const isFood = d.category === "dish" && d.buffDurationSec != null;
+    const isDrink = d.category === "drink" && d.buffDurationSec != null;
+    const equipped = (isRod && p.equipped.rod === id) || (isBait && p.equipped.lure === id) || (isFood && p.loadout.food === id) || (isDrink && p.loadout.drink === id);
     const item = el("div", "inv-item" + (equipped ? " equipped" : ""));
     item.title = valueFor(id) != null ? `${nameFor(id)} — sells for 🪙${valueFor(id)}` : nameFor(id);
-    let actions = "";
     item.innerHTML = `<div class="ii-icon">${iconFor(id)}</div><div class="ii-qty">${qty.toLocaleString()}</div><span class="ii-name ${rarityCls(id)}">${nameFor(id)}</span>`;
     const act = el("div", "ii-actions");
     if (isRod) {
       const eq = el("button", null, equipped ? "Unequip" : "Equip");
-      eq.onclick = () => send(equipped ? { type: "unequip" } : { type: "equip", item: id });
+      eq.onclick = () => send(equipped ? { type: "unequip", slot: "rod" } : { type: "equip", slot: "rod", item: id });
       act.appendChild(eq);
     }
-    if (d.category === "dish" && d.buffDurationSec) {
-      const eat = el("button", null, "Eat");
-      eat.title = `+${Math.round((1 - d.buffSpeedMult) * 100)}% cast speed, +${Math.round(d.buffRareBonus * 100)}% rare for ${Math.round(d.buffDurationSec / 60)} min`;
-      eat.onclick = () => send({ type: "eat", item: id });
-      act.appendChild(eat);
+    if (isBait) {
+      const eq = el("button", null, equipped ? "Unequip" : "Equip as Lure");
+      eq.title = `+${Math.round((d.baitRareBonus || 0) * 100)}% rare per cast while equipped`;
+      eq.onclick = () => send(equipped ? { type: "unequip", slot: "lure" } : { type: "equip", slot: "lure", item: id });
+      act.appendChild(eq);
+    }
+    if (isFood) {
+      const btn = el("button", null, equipped ? "Clear" : "Set as Food");
+      btn.title = `+${Math.round((1 - d.buffSpeedMult) * 100)}% cast speed, +${Math.round(d.buffRareBonus * 100)}% rare — auto-eaten while fishing (${Math.round(d.buffDurationSec / 60)} min per dish)`;
+      btn.onclick = () => send({ type: "loadout", kind: "food", item: equipped ? null : id });
+      act.appendChild(btn);
+    }
+    if (isDrink) {
+      const btn = el("button", null, equipped ? "Clear" : "Set as Drink");
+      const bonusTxt = d.buffXpMult ? `+${Math.round((d.buffXpMult - 1) * 100)}% xp` : `+${Math.round((d.buffEfficiencyBonus || 0) * 100)}% efficiency`;
+      btn.title = `${bonusTxt} — auto-drunk while playing (${Math.round(d.buffDurationSec / 60)} min per drink)`;
+      btn.onclick = () => send({ type: "loadout", kind: "drink", item: equipped ? null : id });
+      act.appendChild(btn);
     }
     if (valueFor(id) != null) {
       const s1 = el("button", null, "Sell 1");

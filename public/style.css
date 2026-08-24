@@ -156,7 +156,7 @@ input:focus { outline: none; border-color: var(--accent); }
 /* ---------- Inventory ---------- */
 #inventory { margin-top: 26px; }
 #inventory h2 { font-size: 1.1rem; margin-bottom: 12px; }
-.inv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.inv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); gap: 8px; }
 .inv-item {
   background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px;
   text-align: center; font-size: .8rem;
@@ -250,14 +250,15 @@ input:focus { outline: none; border-color: var(--accent); }
 /* ---------- Buff chip ---------- */
 .stat.buff { color: var(--accent-2); background: var(--bg-3); border: 1px solid var(--accent-2); border-radius: 8px; padding: 3px 10px; font-size: .82rem; }
 .stat.buff .muted { color: var(--muted); }
+.stat.buff.drink { color: var(--xp); border-color: var(--xp); }
 
 /* ---------- Bank ---------- */
 .bank-sub { font-size: .95rem; color: var(--muted); margin: 6px 0 10px; }
 
 /* ---------- Inventory item actions ---------- */
 .inv-item { position: relative; }
-.inv-item .ii-actions { display: flex; gap: 4px; margin-top: 6px; justify-content: center; }
-.inv-item .ii-actions button { font-size: .7rem; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg-3); color: var(--text); cursor: pointer; }
+.inv-item .ii-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; justify-content: center; }
+.inv-item .ii-actions button { flex: 0 0 auto; font-size: .7rem; padding: 2px 7px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg-3); color: var(--text); cursor: pointer; white-space: nowrap; }
 .inv-item.equipped { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 
 .toast-wrap { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; z-index: 50; }

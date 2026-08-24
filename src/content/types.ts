@@ -5,7 +5,7 @@ export type SkillId = "fishing" | "cooking" | "crafting" | "foraging";
 
 export type Rarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
 
-export type ItemCategory = "fish" | "material" | "bait" | "rod" | "dish" | "treasure";
+export type ItemCategory = "fish" | "material" | "bait" | "rod" | "dish" | "drink" | "treasure";
 
 export interface SkillDef {
   id: SkillId;
@@ -33,10 +33,14 @@ export interface ItemDef {
   // Bait-only (consumed per catch while active)
   baitRareBonus?: number;
 
-  // Dish-only (eaten for a timed fishing buff)
+  // Dish-only ("food" provisions — timed fishing speed/rare buff)
   buffDurationSec?: number;
   buffSpeedMult?: number; // multiplies cast time while active (lower = faster)
   buffRareBonus?: number; // added to rare-catch bonus while active
+
+  // Drink-only ("drink" provisions — timed efficiency/XP buff, any skill)
+  buffEfficiencyBonus?: number; // added to efficiency while active
+  buffXpMult?: number; // multiplies XP gained while active
 }
 
 // A fishing spot. Each catch rolls one species from the weighted table.

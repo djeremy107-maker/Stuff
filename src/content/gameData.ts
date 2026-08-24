@@ -70,12 +70,20 @@ const itemList: ItemDef[] = [
   { id: "carbon_rod", name: "Carbon Rod", icon: "🎣", category: "rod", value: 400, rodSpeedMult: 0.72, rodRareBonus: 0.12 },
   { id: "anglers_pro_rod", name: "Angler's Pro Rod", icon: "🏆", category: "rod", value: 1500, rodSpeedMult: 0.6, rodRareBonus: 0.2 },
 
-  // ---- Dishes (cooking outputs) — sell for coins OR eat for a timed fishing buff ----
-  { id: "grilled_trout", name: "Grilled Trout", icon: "🍤", category: "dish", value: 30, buffDurationSec: 300, buffSpeedMult: 0.95, buffRareBonus: 0.02 },
-  { id: "salmon_fillet", name: "Salmon Fillet", icon: "🍥", category: "dish", value: 55, buffDurationSec: 480, buffSpeedMult: 0.92, buffRareBonus: 0.04 },
-  { id: "tuna_steak", name: "Tuna Steak", icon: "🥩", category: "dish", value: 200, buffDurationSec: 720, buffSpeedMult: 0.88, buffRareBonus: 0.06 },
-  { id: "seafood_platter", name: "Seafood Platter", icon: "🍱", category: "dish", value: 380, buffDurationSec: 900, buffSpeedMult: 0.85, buffRareBonus: 0.08 },
-  { id: "sashimi_deluxe", name: "Sashimi Deluxe", icon: "🍣", category: "dish", value: 620, buffDurationSec: 1200, buffSpeedMult: 0.8, buffRareBonus: 0.1 },
+  // ---- Dishes (cooking outputs) — "food" provisions: sell for coins OR set as
+  // your Food loadout for a long timed fishing speed/rare buff, auto-consumed
+  // from your stack so it keeps working while you're offline.
+  { id: "grilled_trout", name: "Grilled Trout", icon: "🍤", category: "dish", value: 30, buffDurationSec: 1800, buffSpeedMult: 0.95, buffRareBonus: 0.02 },
+  { id: "salmon_fillet", name: "Salmon Fillet", icon: "🍥", category: "dish", value: 55, buffDurationSec: 2700, buffSpeedMult: 0.92, buffRareBonus: 0.04 },
+  { id: "tuna_steak", name: "Tuna Steak", icon: "🥩", category: "dish", value: 200, buffDurationSec: 3600, buffSpeedMult: 0.88, buffRareBonus: 0.06 },
+  { id: "seafood_platter", name: "Seafood Platter", icon: "🍱", category: "dish", value: 380, buffDurationSec: 4500, buffSpeedMult: 0.85, buffRareBonus: 0.08 },
+  { id: "sashimi_deluxe", name: "Sashimi Deluxe", icon: "🍣", category: "dish", value: 620, buffDurationSec: 5400, buffSpeedMult: 0.8, buffRareBonus: 0.1 },
+
+  // ---- Drinks (cooking outputs) — "drink" provisions: a long timed efficiency
+  // or XP buff that applies to whatever skill you're working, food's counterpart.
+  { id: "kelp_tea", name: "Kelp Tea", icon: "🍵", category: "drink", value: 15, buffDurationSec: 1800, buffEfficiencyBonus: 0.05 },
+  { id: "pearlgrass_tonic", name: "Pearlgrass Tonic", icon: "🧉", category: "drink", value: 60, buffDurationSec: 2700, buffEfficiencyBonus: 0.1 },
+  { id: "anglers_coffee", name: "Angler's Coffee", icon: "☕", category: "drink", value: 90, buffDurationSec: 3600, buffXpMult: 1.08 },
 ];
 
 const items: Record<string, ItemDef> = {};
@@ -193,6 +201,11 @@ export const gameData: GameData = {
     { id: "cook_tuna_steak", skill: "cooking", name: "Cook Tuna Steak", levelReq: 30, durationSec: 4.5, xp: 70, inputs: [{ item: "yellowfin_tuna", qty: 1 }], outputs: [{ item: "tuna_steak", qty: 1 }] },
     { id: "cook_seafood_platter", skill: "cooking", name: "Cook Seafood Platter", levelReq: 45, durationSec: 5.5, xp: 110, inputs: [{ item: "mahi_mahi", qty: 1 }, { item: "sea_bass", qty: 1 }], outputs: [{ item: "seafood_platter", qty: 1 }] },
     { id: "cook_sashimi", skill: "cooking", name: "Prepare Sashimi Deluxe", levelReq: 60, durationSec: 6, xp: 170, inputs: [{ item: "swordfish", qty: 1 }], outputs: [{ item: "sashimi_deluxe", qty: 1 }] },
+
+    // ---- Cooking: drinks (brewed from foraged materials) ----
+    { id: "brew_kelp_tea", skill: "cooking", name: "Brew Kelp Tea", levelReq: 10, durationSec: 3, xp: 12, inputs: [{ item: "kelp", qty: 2 }], outputs: [{ item: "kelp_tea", qty: 1 }] },
+    { id: "brew_pearlgrass_tonic", skill: "cooking", name: "Brew Pearlgrass Tonic", levelReq: 35, durationSec: 4.5, xp: 40, inputs: [{ item: "pearl", qty: 1 }, { item: "kelp", qty: 3 }], outputs: [{ item: "pearlgrass_tonic", qty: 1 }] },
+    { id: "brew_anglers_coffee", skill: "cooking", name: "Brew Angler's Coffee", levelReq: 50, durationSec: 5, xp: 65, inputs: [{ item: "pearl", qty: 1 }, { item: "grub", qty: 2 }], outputs: [{ item: "anglers_coffee", qty: 1 }] },
   ],
 
   shop: [

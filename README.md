@@ -7,7 +7,7 @@ rods, and level up a shared **Anglers' Guild** together.
 
 Built for two people (you + your girlfriend), and designed to keep growing.
 
-## What's in it (v0.6)
+## What's in it (v0.7)
 
 - **6 fishing zones** — Backyard Pond → Riverbank → Misty Lake → Coral Harbor →
   Deep Sea → Abyssal Trench, each unlocking with your Fishing level.
@@ -24,6 +24,14 @@ Built for two people (you + your girlfriend), and designed to keep growing.
   **efficiency** (a chance for free instant extra output) plus a small speed
   boost, so leveling up visibly improves whatever you're doing and keeps old
   zones worth farming.
+- **Provisions (Food & Drink loadout)** — set a dish as your Food and a brewed
+  drink as your Drink, and they auto-consume from your stack while you play —
+  no more manually re-eating every few minutes. Food boosts fishing speed/rare
+  chance; drinks (Kelp Tea, Pearlgrass Tonic, Angler's Coffee) boost efficiency
+  or XP for whatever skill you're working. Keeps working exactly across
+  offline time.
+- **Lure slot** — equip a specific bait instead of auto-burning your best one,
+  so you can save shiny lures for when they matter.
 - **Supporting trade skills**: **Foraging** (bait & materials), **Tackle
   Crafting** (bait, hooks, line, and better **rods**), **Cooking** (turn fish
   into valuable dishes).

@@ -71,10 +71,15 @@ export interface ActionState extends QueueEntry {
   progressMs: number; // ms accumulated toward the next completion
 }
 
+// A single active provision buff. Food buffs carry speed/rare; drink buffs
+// carry efficiency/XP — unused fields stay at their neutral value (1 or 0) so
+// both kinds share one shape.
 export interface BuffState {
-  dishId: string;
-  speedMult: number; // multiplies cast time (lower = faster)
-  rareBonus: number;
+  itemId: string;
+  speedMult: number; // multiplies cast time (lower = faster) — food
+  rareBonus: number; // — food
+  efficiencyBonus: number; // — drink
+  xpMult: number; // multiplies XP gained — drink
   expiresAt: number; // ms epoch
 }
 
@@ -85,9 +90,10 @@ export interface PlayerState {
   skills: Record<string, number>;
   inventory: Record<string, number>;
   bestiary: Record<string, { count: number; max: number }>;
-  equipped: { rod?: string };
-  baitActive: boolean;
-  buff: BuffState | null;
+  equipped: { rod?: string; lure?: string };
+  loadout: { food?: string; drink?: string }; // provisions auto-consumed from your bag
+  foodBuff: BuffState | null;
+  drinkBuff: BuffState | null;
   achievements: string[];
   action: ActionState | null;
   queue: QueueEntry[];
@@ -96,18 +102,20 @@ export interface PlayerState {
 
 const selectChar = db.prepare<[number]>("SELECT * FROM characters WHERE user_id = ?");
 const upsertChar = db.prepare(`
-  INSERT INTO characters (user_id, name, coins, skills_json, inventory_json, bestiary_json, equipped_json, action_json, bait_active, buff_json, achievements_json, queue_json, updated_at)
-  VALUES (@user_id, @name, @coins, @skills_json, @inventory_json, @bestiary_json, @equipped_json, @action_json, @bait_active, @buff_json, @achievements_json, @queue_json, @updated_at)
+  INSERT INTO characters (user_id, name, coins, skills_json, inventory_json, bestiary_json, equipped_json, action_json, buff_json, achievements_json, queue_json, loadout_json, updated_at)
+  VALUES (@user_id, @name, @coins, @skills_json, @inventory_json, @bestiary_json, @equipped_json, @action_json, @buff_json, @achievements_json, @queue_json, @loadout_json, @updated_at)
   ON CONFLICT(user_id) DO UPDATE SET
     coins=@coins, skills_json=@skills_json, inventory_json=@inventory_json,
     bestiary_json=@bestiary_json, equipped_json=@equipped_json,
-    action_json=@action_json, bait_active=@bait_active, buff_json=@buff_json,
-    achievements_json=@achievements_json, queue_json=@queue_json, updated_at=@updated_at
+    action_json=@action_json, buff_json=@buff_json,
+    achievements_json=@achievements_json, queue_json=@queue_json,
+    loadout_json=@loadout_json, updated_at=@updated_at
 `);
 
 export function loadPlayer(userId: number): PlayerState | null {
   const row = selectChar.get(userId) as CharacterRow | undefined;
   if (!row) return null;
+  const buffs = normalizeBuffs(row.buff_json ? JSON.parse(row.buff_json) : null);
   return {
     userId: row.user_id,
     name: row.name,
@@ -116,8 +124,9 @@ export function loadPlayer(userId: number): PlayerState | null {
     inventory: JSON.parse(row.inventory_json),
     bestiary: JSON.parse(row.bestiary_json),
     equipped: JSON.parse(row.equipped_json),
-    baitActive: !!row.bait_active,
-    buff: row.buff_json ? JSON.parse(row.buff_json) : null,
+    loadout: row.loadout_json ? JSON.parse(row.loadout_json) : {},
+    foodBuff: buffs.food,
+    drinkBuff: buffs.drink,
     achievements: row.achievements_json ? JSON.parse(row.achievements_json) : [],
     action: normalizeAction(row.action_json ? JSON.parse(row.action_json) : null),
     queue: row.queue_json ? JSON.parse(row.queue_json) : [],
@@ -138,6 +147,26 @@ function normalizeAction(a: any): ActionState | null {
   };
 }
 
+function normalizeBuff(raw: any): BuffState | null {
+  if (!raw) return null;
+  return {
+    itemId: raw.itemId ?? raw.dishId,
+    speedMult: raw.speedMult ?? 1,
+    rareBonus: raw.rareBonus ?? 0,
+    efficiencyBonus: raw.efficiencyBonus ?? 0,
+    xpMult: raw.xpMult ?? 1,
+    expiresAt: raw.expiresAt,
+  };
+}
+// Backfill for saves from before the food/drink split (a single `buff` object
+// with a `dishId` was always a food buff).
+function normalizeBuffs(raw: any): { food: BuffState | null; drink: BuffState | null } {
+  if (!raw) return { food: null, drink: null };
+  if ("food" in raw || "drink" in raw) return { food: normalizeBuff(raw.food), drink: normalizeBuff(raw.drink) };
+  if (raw.dishId) return { food: normalizeBuff(raw), drink: null };
+  return { food: null, drink: null };
+}
+
 export function savePlayer(p: PlayerState): void {
   upsertChar.run({
     user_id: p.userId,
@@ -148,10 +177,10 @@ export function savePlayer(p: PlayerState): void {
     bestiary_json: JSON.stringify(p.bestiary),
     equipped_json: JSON.stringify(p.equipped),
     action_json: p.action ? JSON.stringify(p.action) : null,
-    bait_active: p.baitActive ? 1 : 0,
-    buff_json: p.buff ? JSON.stringify(p.buff) : "",
+    buff_json: JSON.stringify({ food: p.foodBuff, drink: p.drinkBuff }),
     achievements_json: JSON.stringify(p.achievements),
     queue_json: JSON.stringify(p.queue),
+    loadout_json: JSON.stringify(p.loadout),
     updated_at: p.updatedAt,
   });
 }
@@ -168,8 +197,9 @@ export function createCharacter(userId: number, name: string): PlayerState {
     inventory: {},
     bestiary: {},
     equipped: {},
-    baitActive: false,
-    buff: null,
+    loadout: {},
+    foodBuff: null,
+    drinkBuff: null,
     achievements: [],
     action: null,
     queue: [],
@@ -201,15 +231,36 @@ function grantXp(p: PlayerState, skill: SkillId, xp: number) {
   p.skills[skill] = (p.skills[skill] || 0) + xp;
 }
 
-// Highest-bonus bait currently in the bag.
-function bestBait(p: PlayerState): { id: string; bonus: number } | null {
-  let best: { id: string; bonus: number } | null = null;
-  for (const [id, qty] of Object.entries(p.inventory)) {
-    if (qty <= 0) continue;
-    const def = gameData.items[id];
-    if (def?.baitRareBonus && (!best || def.baitRareBonus > best.bonus)) best = { id, bonus: def.baitRareBonus };
-  }
-  return best;
+// Keep a provision slot topped up: if its buff has expired (or there wasn't
+// one yet), auto-consume the next item from the loadout and start a fresh
+// buff at exactly `clock` — so a stack of dishes/drinks covers a long offline
+// window back-to-back with no gap, and this replays identically whether it's
+// running live or catching up on missed time.
+function refillBuff(p: PlayerState, kind: "food" | "drink", clock: number) {
+  const current = kind === "food" ? p.foodBuff : p.drinkBuff;
+  if (current && clock < current.expiresAt) return;
+  const itemId = kind === "food" ? p.loadout.food : p.loadout.drink;
+  const next = itemId ? startBuff(p, itemId, clock) : null;
+  if (kind === "food") p.foodBuff = next;
+  else p.drinkBuff = next;
+}
+function refillBuffs(p: PlayerState, clock: number) {
+  refillBuff(p, "food", clock);
+  refillBuff(p, "drink", clock);
+}
+// Consume one of `itemId` (if any remain) and build the buff it grants.
+function startBuff(p: PlayerState, itemId: string, clock: number): BuffState | null {
+  const def = gameData.items[itemId];
+  if (!def || def.buffDurationSec == null || (p.inventory[itemId] || 0) < 1) return null;
+  removeItem(p, itemId, 1);
+  return {
+    itemId,
+    speedMult: def.buffSpeedMult ?? 1,
+    rareBonus: def.buffRareBonus ?? 0,
+    efficiencyBonus: def.buffEfficiencyBonus ?? 0,
+    xpMult: def.buffXpMult ?? 1,
+    expiresAt: clock + def.buffDurationSec * 1000,
+  };
 }
 
 function personalCatchTotal(p: PlayerState): number {
@@ -285,9 +336,15 @@ function levelSpeedFactor(levelsAbove: number): number {
 }
 
 // Efficiency: chance(s) to instantly repeat a completion for free extra output.
-// +1% per level above the action's requirement, plus the shared Guild bonus.
-export function efficiencyFor(p: PlayerState, skill: SkillId, levelReq: number): number {
-  return 0.01 * Math.max(0, skillLevel(p, skill) - levelReq) + guildEfficiencyBonus();
+// +1% per level above the action's requirement, plus the shared Guild bonus and
+// an active drink's bonus.
+export function efficiencyFor(p: PlayerState, skill: SkillId, levelReq: number, clock: number): number {
+  const drinkBonus = p.drinkBuff && clock < p.drinkBuff.expiresAt ? p.drinkBuff.efficiencyBonus : 0;
+  return 0.01 * Math.max(0, skillLevel(p, skill) - levelReq) + guildEfficiencyBonus() + drinkBonus;
+}
+// XP multiplier from an active drink at this moment in sim-time.
+function xpMultAt(p: PlayerState, clock: number): number {
+  return p.drinkBuff && clock < p.drinkBuff.expiresAt ? p.drinkBuff.xpMult : 1;
 }
 
 // Per-completion duration + rare bonus for a single cast at absolute time `clock`.
@@ -297,10 +354,10 @@ function fishParamsAt(p: PlayerState, zoneId: string, clock: number): { durMs: n
   const levelsAbove = skillLevel(p, "fishing") - zone.levelReq;
   const base = zone.baseTimeSec * (rod?.rodSpeedMult ?? 1) * levelSpeedFactor(levelsAbove) * (1 - guildSpeedBonus()) * 1000;
   const event = getActiveEvent();
-  const buffed = p.buff && clock < p.buff.expiresAt;
+  const buffed = p.foodBuff && clock < p.foodBuff.expiresAt;
   const eventOn = !!event && event.zoneId === zoneId && clock >= event.startsAt && clock < event.endsAt;
-  const durMs = base * (buffed ? p.buff!.speedMult : 1) * (eventOn ? event!.speedMult : 1);
-  const rareBonus = (rod?.rodRareBonus ?? 0) + (buffed ? p.buff!.rareBonus : 0) + (eventOn ? event!.rareBonus : 0);
+  const durMs = base * (buffed ? p.foodBuff!.speedMult : 1) * (eventOn ? event!.speedMult : 1);
+  const rareBonus = (rod?.rodRareBonus ?? 0) + (buffed ? p.foodBuff!.rareBonus : 0) + (eventOn ? event!.rareBonus : 0);
   return { durMs, rareBonus };
 }
 
@@ -340,7 +397,7 @@ export function processElapsed(p: PlayerState, now: number): ProgressSummary {
   let guildCatches = 0;
 
   // Grant one full catch's rewards (used by the timed cast and by efficiency procs).
-  const doFish = (zone: (typeof gameData.zones)[number], rareBonus: number) => {
+  const doFish = (zone: (typeof gameData.zones)[number], rareBonus: number, xpMult: number) => {
     const species = rollSpecies(zone.id, rareBonus);
     if (!species) return;
     addItem(p, species, 1);
@@ -354,7 +411,7 @@ export function processElapsed(p: PlayerState, now: number): ProgressSummary {
     else { rec.count++; if (size > rec.max) rec.max = size; }
     if (size > 0 && (!summary.biggest || size > summary.biggest.size)) summary.biggest = { item: species, size };
     const rarity = def?.rarity ?? "common";
-    const xp = Math.round(gameData.rarityXp[rarity] * zone.xpMult);
+    const xp = Math.round(gameData.rarityXp[rarity] * zone.xpMult * xpMult);
     grantXp(p, "fishing", xp);
     addXpSum("fishing", xp);
     if (def?.category === "fish") guildCatches++; // treasure (old boot) is not a fish
@@ -362,7 +419,7 @@ export function processElapsed(p: PlayerState, now: number): ProgressSummary {
   };
 
   // Grant one produce/gather completion; returns false if inputs were missing.
-  const doProduce = (def: (typeof gameData.actions)[number]): boolean => {
+  const doProduce = (def: (typeof gameData.actions)[number], xpMult: number): boolean => {
     if (def.inputs.length && !hasInputs(p, def)) return false;
     for (const inp of def.inputs) removeItem(p, inp.item, inp.qty);
     for (const out of def.outputs) {
@@ -370,8 +427,9 @@ export function processElapsed(p: PlayerState, now: number): ProgressSummary {
       const got = chance >= 1 ? out.qty : Math.random() < chance ? out.qty : 0;
       if (got > 0) { addItem(p, out.item, got); addItemSum(out.item, got); }
     }
-    grantXp(p, def.skill, def.xp);
-    addXpSum(def.skill, def.xp);
+    const xp = Math.round(def.xp * xpMult);
+    grantXp(p, def.skill, xp);
+    addXpSum(def.skill, xp);
     summary.completions++;
     return true;
   };
@@ -386,6 +444,7 @@ export function processElapsed(p: PlayerState, now: number): ProgressSummary {
   while (remaining > 0 && p.action && guard < SIM_GUARD) {
     guard++;
     const entry = p.action;
+    refillBuffs(p, clock);
 
     if (entry.type === "fish") {
       const zone = zonesById.get(entry.refId);
@@ -394,20 +453,22 @@ export function processElapsed(p: PlayerState, now: number): ProgressSummary {
       const need = durMs - entry.progressMs;
       if (remaining < need) { entry.progressMs += remaining; clock += remaining; remaining = 0; break; }
 
-      // The timed cast (consumes bait if the toggle is on).
+      // The timed cast: equipped lure adds to rare chance and is consumed.
       let rareBonus = baseRare;
-      if (p.baitActive) {
-        const bait = bestBait(p);
-        if (bait) { removeItem(p, bait.id, 1); rareBonus += bait.bonus; }
+      const lure = p.equipped.lure ? gameData.items[p.equipped.lure] : undefined;
+      if (lure?.baitRareBonus && (p.inventory[p.equipped.lure!] || 0) > 0) {
+        removeItem(p, p.equipped.lure!, 1);
+        rareBonus += lure.baitRareBonus;
       }
-      doFish(zone, rareBonus);
+      const xpMult = xpMultAt(p, clock);
+      doFish(zone, rareBonus, xpMult);
       entry.done++;
       clock += need; remaining -= need; entry.progressMs = 0;
 
-      // Efficiency: free instant extra casts (no time, no bait), using base rare bonus.
-      let eff = efficiencyFor(p, "fishing", zone.levelReq);
+      // Efficiency: free instant extra casts (no time, no lure), using base rare bonus.
+      let eff = efficiencyFor(p, "fishing", zone.levelReq, clock);
       while (eff > 0) {
-        if (Math.random() < Math.min(1, eff)) { doFish(zone, baseRare); entry.done++; summary.bonus++; }
+        if (Math.random() < Math.min(1, eff)) { doFish(zone, baseRare, xpMult); entry.done++; summary.bonus++; }
         eff -= 1;
       }
       if (entry.target > 0 && entry.done >= entry.target) { if (!promoteNext(p)) break; }
@@ -426,21 +487,24 @@ export function processElapsed(p: PlayerState, now: number): ProgressSummary {
       continue; // note: time not consumed; next entry starts fresh
     }
 
-    doProduce(def);
+    const xpMult = xpMultAt(p, clock);
+    doProduce(def, xpMult);
     entry.done++;
     clock += need; remaining -= need; entry.progressMs = 0;
 
     // Efficiency procs (skip a proc if it would run out of inputs).
-    let eff = efficiencyFor(p, def.skill, def.levelReq);
+    let eff = efficiencyFor(p, def.skill, def.levelReq, clock);
     while (eff > 0) {
-      if (Math.random() < Math.min(1, eff)) { if (doProduce(def)) { entry.done++; summary.bonus++; } }
+      if (Math.random() < Math.min(1, eff)) { if (doProduce(def, xpMult)) { entry.done++; summary.bonus++; } }
       eff -= 1;
     }
     if (entry.target > 0 && entry.done >= entry.target) { if (!promoteNext(p)) break; }
   }
 
+  // Keep provisions ticking even while idle (no active action).
+  refillBuffs(p, now);
+
   if (guildCatches > 0) addGuild.run(guildCatches);
-  if (p.buff && now >= p.buff.expiresAt) p.buff = null;
   evaluateAchievements(p, summary);
   p.updatedAt = now;
   return summary;
@@ -501,22 +565,21 @@ export function stopAction(p: PlayerState) {
   p.updatedAt = Date.now();
 }
 
-export function setBait(p: PlayerState, active: boolean) {
-  p.baitActive = active;
-  p.updatedAt = Date.now();
-}
-
-export function eatDish(p: PlayerState, item: string): { ok: boolean; error?: string } {
-  const def = gameData.items[item];
-  if (!def || def.category !== "dish" || def.buffDurationSec == null) return { ok: false, error: "That isn't an edible dish." };
-  if ((p.inventory[item] || 0) < 1) return { ok: false, error: "You don't have that dish." };
-  removeItem(p, item, 1);
-  p.buff = {
-    dishId: item,
-    speedMult: def.buffSpeedMult ?? 1,
-    rareBonus: def.buffRareBonus ?? 0,
-    expiresAt: Date.now() + def.buffDurationSec * 1000,
-  };
+// Set (or clear, with item = null) your Food or Drink provision. If that slot
+// isn't currently active, this consumes one immediately so the boost starts
+// right away rather than waiting for the next natural refill.
+export function setLoadout(p: PlayerState, kind: "food" | "drink", item: string | null): { ok: boolean; error?: string } {
+  if (item != null) {
+    const def = gameData.items[item];
+    const wantCategory = kind === "food" ? "dish" : "drink";
+    if (!def || def.category !== wantCategory || def.buffDurationSec == null) {
+      return { ok: false, error: kind === "food" ? "That isn't a dish." : "That isn't a drink." };
+    }
+    if ((p.inventory[item] || 0) < 1) return { ok: false, error: "You don't have any of that." };
+  }
+  if (kind === "food") p.loadout.food = item ?? undefined;
+  else p.loadout.drink = item ?? undefined;
+  refillBuff(p, kind, Date.now());
   p.updatedAt = Date.now();
   return { ok: true };
 }
@@ -534,6 +597,19 @@ export function unequipRod(p: PlayerState) {
   p.updatedAt = Date.now();
 }
 
+export function equipLure(p: PlayerState, item: string): { ok: boolean; error?: string } {
+  const def = gameData.items[item];
+  if (!def || def.category !== "bait") return { ok: false, error: "That isn't bait." };
+  if ((p.inventory[item] || 0) < 1) return { ok: false, error: "You don't have any of that." };
+  p.equipped.lure = item;
+  p.updatedAt = Date.now();
+  return { ok: true };
+}
+export function unequipLure(p: PlayerState) {
+  delete p.equipped.lure;
+  p.updatedAt = Date.now();
+}
+
 export function sellItem(p: PlayerState, item: string, qty: number): { ok: boolean; error?: string; coins?: number } {
   const def = gameData.items[item];
   if (!def || def.value == null) return { ok: false, error: "That can't be sold." };
@@ -544,6 +620,7 @@ export function sellItem(p: PlayerState, item: string, qty: number): { ok: boole
   const gained = def.value * qty;
   p.coins += gained;
   if (p.equipped.rod === item && (p.inventory[item] || 0) < 1) delete p.equipped.rod;
+  if (p.equipped.lure === item && (p.inventory[item] || 0) < 1) delete p.equipped.lure;
   p.updatedAt = Date.now();
   return { ok: true, coins: gained };
 }
@@ -571,20 +648,23 @@ export function serializePlayer(p: PlayerState, now = Date.now()) {
     skills[s.id] = { xp, level: prog.level, into: prog.into, needed: prog.needed, pct: prog.pct };
   }
 
-  const buffActive = p.buff && now < p.buff.expiresAt;
-  let buff: any = null;
-  if (buffActive && p.buff) {
-    const d = gameData.items[p.buff.dishId];
-    buff = {
-      dishId: p.buff.dishId,
-      name: d?.name ?? p.buff.dishId,
+  const describeBuff = (b: BuffState | null): any => {
+    if (!b || now >= b.expiresAt) return null;
+    const d = gameData.items[b.itemId];
+    return {
+      itemId: b.itemId,
+      name: d?.name ?? b.itemId,
       icon: d?.icon ?? "⭐",
-      speedMult: p.buff.speedMult,
-      rareBonus: p.buff.rareBonus,
-      expiresAt: p.buff.expiresAt,
-      remainingSec: Math.max(0, Math.round((p.buff.expiresAt - now) / 1000)),
+      speedMult: b.speedMult,
+      rareBonus: b.rareBonus,
+      efficiencyBonus: b.efficiencyBonus,
+      xpMult: b.xpMult,
+      expiresAt: b.expiresAt,
+      remainingSec: Math.max(0, Math.round((b.expiresAt - now) / 1000)),
     };
-  }
+  };
+  const foodBuff = describeBuff(p.foodBuff);
+  const drinkBuff = describeBuff(p.drinkBuff);
 
   const entryLabel = (type: string, refId: string): { name: string; icon: string } => {
     if (type === "fish") {
@@ -624,8 +704,9 @@ export function serializePlayer(p: PlayerState, now = Date.now()) {
     inventory: p.inventory,
     bestiary: p.bestiary,
     equipped: p.equipped,
-    baitActive: p.baitActive,
-    buff,
+    loadout: p.loadout,
+    foodBuff,
+    drinkBuff,
     achievements: p.achievements,
     action,
     queue,

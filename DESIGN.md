@@ -38,9 +38,18 @@ it incremental depth for two players.
   level → a cast-speed bonus applied to everyone. Coop incremental progression.
 - **Shared Bank** (`bank` table + `src/bank.ts`): a single item stash both
   players deposit into / withdraw from; changes are broadcast live to both.
-- **Meal buffs**: eating a dish sets a per-player buff `{ speedMult, rareBonus,
-  expiresAt }`. The fishing loop walks sim-time forward and checks the buff per
-  cast, so it applies exactly (and expires mid-window correctly) even offline.
+- **Provisions (Food/Drink loadout)**: `loadout: { food?, drink? }` names an
+  item; `foodBuff`/`drinkBuff` are the currently-active instances
+  (`{ speedMult, rareBonus, efficiencyBonus, xpMult, expiresAt }` — unused
+  fields sit at their neutral value so one shape covers both kinds). Every
+  iteration of the sim loop calls `refillBuffs(p, clock)`: if a slot's buff has
+  expired (or never started), it consumes the next stacked item and starts a
+  fresh buff beginning exactly at `clock`, so a stack of dishes/drinks chains
+  back-to-back across a long offline window and stops cleanly once it runs
+  out — same mechanism and precision as hotspot events.
+- **Lure**: `equipped.lure` names one bait item; the timed fishing cast
+  consumes one per completion (efficiency procs don't consume lure, matching
+  "free" bonus output). Replaced the old auto-best-bait toggle.
 - **Hotspot events** (`src/events.ts`): a server-side scheduler rotates a global
   `FishingEvent` (boosted zone) and broadcasts start/end. The fishing loop reads
   `getActiveEvent()` and applies its bonus per cast, gated on zone + sim-time —
@@ -91,9 +100,17 @@ content (shiny/variant fish, weather/time-of-day exclusives).
       then efficiency past level 20).
 - [x] **Treasure ≠ fish** — the Old Boot no longer ticks the Guild or catch-total
       achievements.
-- [ ] **Consumable loadout** — food/drink slots that auto-consume from a stack;
-      dish durations retuned to 30–90 min; brewed "teas" from Foraging.
-- [ ] **Lure slot** — equip a specific bait instead of the auto-best toggle.
+- [x] **Consumable loadout** — `loadout: { food?, drink? }` on the player;
+      dishes ("food") give speed/rare, brewed drinks ("drink") give
+      efficiency/XP. Auto-refills from your stack the instant the active buff
+      expires, evaluated per sim-tick so it chains seamlessly across long
+      offline windows and stops cleanly when the stack runs out. Dish
+      durations retuned to 30–90 min (1800–5400s). New drinks: Kelp Tea,
+      Pearlgrass Tonic, Angler's Coffee (brewed via Cooking).
+- [x] **Lure slot** — `equipped.lure` replaces the old auto-best bait toggle;
+      equip a specific bait from Inventory, consumed one per timed cast.
+
+Phase 1 is complete.
 
 **Phase 2 — Gear & Home:** tackle slots + tools, rod enhancement (+1…+10, cozy),
 the shared **Boathouse** (coop house upgrades = main coin/material sink, includes
