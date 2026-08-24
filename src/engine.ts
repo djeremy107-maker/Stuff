@@ -142,6 +142,7 @@ export interface PlayerState {
   drinkBuff: BuffState | null;
   achievements: string[];
   prestige: number; // times reborn — resets skills for a permanent efficiency bonus
+  pity: Record<string, number>; // zone id -> consecutive non-legendary catches, for bad-luck protection
   action: ActionState | null;
   queue: QueueEntry[];
   updatedAt: number;
@@ -149,15 +150,15 @@ export interface PlayerState {
 
 const selectChar = db.prepare<[number]>("SELECT * FROM characters WHERE user_id = ?");
 const upsertChar = db.prepare(`
-  INSERT INTO characters (user_id, name, coins, skills_json, inventory_json, bestiary_json, equipped_json, action_json, buff_json, achievements_json, queue_json, loadout_json, enhancements_json, prestige, updated_at)
-  VALUES (@user_id, @name, @coins, @skills_json, @inventory_json, @bestiary_json, @equipped_json, @action_json, @buff_json, @achievements_json, @queue_json, @loadout_json, @enhancements_json, @prestige, @updated_at)
+  INSERT INTO characters (user_id, name, coins, skills_json, inventory_json, bestiary_json, equipped_json, action_json, buff_json, achievements_json, queue_json, loadout_json, enhancements_json, prestige, pity_json, updated_at)
+  VALUES (@user_id, @name, @coins, @skills_json, @inventory_json, @bestiary_json, @equipped_json, @action_json, @buff_json, @achievements_json, @queue_json, @loadout_json, @enhancements_json, @prestige, @pity_json, @updated_at)
   ON CONFLICT(user_id) DO UPDATE SET
     coins=@coins, skills_json=@skills_json, inventory_json=@inventory_json,
     bestiary_json=@bestiary_json, equipped_json=@equipped_json,
     action_json=@action_json, buff_json=@buff_json,
     achievements_json=@achievements_json, queue_json=@queue_json,
     loadout_json=@loadout_json, enhancements_json=@enhancements_json,
-    prestige=@prestige, updated_at=@updated_at
+    prestige=@prestige, pity_json=@pity_json, updated_at=@updated_at
 `);
 
 export function loadPlayer(userId: number): PlayerState | null {
@@ -178,6 +179,7 @@ export function loadPlayer(userId: number): PlayerState | null {
     drinkBuff: buffs.drink,
     achievements: row.achievements_json ? JSON.parse(row.achievements_json) : [],
     prestige: row.prestige ?? 0,
+    pity: row.pity_json ? JSON.parse(row.pity_json) : {},
     action: normalizeAction(row.action_json ? JSON.parse(row.action_json) : null),
     queue: row.queue_json ? JSON.parse(row.queue_json) : [],
     updatedAt: row.updated_at,
@@ -233,6 +235,7 @@ export function savePlayer(p: PlayerState): void {
     loadout_json: JSON.stringify(p.loadout),
     enhancements_json: JSON.stringify(p.enhancements),
     prestige: p.prestige,
+    pity_json: JSON.stringify(p.pity),
     updated_at: p.updatedAt,
   });
 }
@@ -255,6 +258,7 @@ export function createCharacter(userId: number, name: string): PlayerState {
     drinkBuff: null,
     achievements: [],
     prestige: 0,
+    pity: {},
     action: null,
     queue: [],
     updatedAt: now,
@@ -346,14 +350,27 @@ function evaluateAchievements(p: PlayerState, summary: ProgressSummary) {
   }
 }
 
-// Weighted species pick, with rareBonus shifting toward rarer fish. Entries
-// with a `condition` (weather/time exclusives) only enter the pool when the
-// shared world clock at `clock` matches — evaluated at that exact moment, so
+// Bad-luck protection: a transparent, honestly-earned bonus (not a fake
+// near-miss) toward a zone's legendary fish, keyed on consecutive
+// non-legendary catches in that zone. Ramps the legendary's weight
+// smoothly, then guarantees it outright once you hit HARD_PITY — a real
+// backstop for the unlucky tail of the distribution, not a marketing trick.
+export const PITY_HARD_CAP = 1500;
+const PITY_MAX_MULT = 15;
+
+// Weighted species pick, with rareBonus shifting toward rarer fish, and
+// `pityCount` (consecutive non-legendary catches in this zone) boosting the
+// legendary entry's weight as it climbs toward the guarantee. Entries with a
+// `condition` (weather/time exclusives) only enter the pool when the shared
+// world clock at `clock` matches — evaluated at that exact moment, so
 // offline catch-up correctly reflects whatever the sky was doing at the time.
-function rollSpecies(zoneId: string, rareBonus: number, clock: number): string | null {
+function rollSpecies(zoneId: string, rareBonus: number, clock: number, pityCount: number): string | null {
   const zone = zonesById.get(zoneId);
   if (!zone) return null;
   const world = worldStateAt(clock);
+  const legendaryEntry = zone.fish.find((f) => gameData.items[f.item]?.rarity === "legendary");
+  if (legendaryEntry && pityCount >= PITY_HARD_CAP) return legendaryEntry.item;
+  const pityRamp = legendaryEntry ? Math.min(1, pityCount / PITY_HARD_CAP) : 0;
   let total = 0;
   const weights: { item: string; w: number }[] = [];
   for (const f of zone.fish) {
@@ -363,7 +380,8 @@ function rollSpecies(zoneId: string, rareBonus: number, clock: number): string |
     }
     const rarity = gameData.items[f.item]?.rarity ?? "common";
     const rank = gameData.rarityRank[rarity];
-    const mult = rank === 0 ? 1 : 1 + rareBonus * (1 + rank);
+    let mult = rank === 0 ? 1 : 1 + rareBonus * (1 + rank);
+    if (rarity === "legendary") mult *= 1 + pityRamp * PITY_MAX_MULT;
     const w = f.weight * mult;
     weights.push({ item: f.item, w });
     total += w;
@@ -374,6 +392,18 @@ function rollSpecies(zoneId: string, rareBonus: number, clock: number): string |
     if (r <= 0) return x.item;
   }
   return weights[weights.length - 1]?.item ?? null;
+}
+
+// Exposes the pity counter for every zone that has a legendary, so the
+// client can show real progress toward the guarantee — a transparent bonus,
+// not a hidden mechanic or a fake near-miss.
+export function pityInfo(p: PlayerState) {
+  return gameData.zones
+    .filter((z) => z.fish.some((f) => gameData.items[f.item]?.rarity === "legendary"))
+    .map((z) => {
+      const count = p.pity[z.id] || 0;
+      return { zoneId: z.id, count, cap: PITY_HARD_CAP, pct: Math.min(1, count / PITY_HARD_CAP) };
+    });
 }
 
 // --------------------------------------------------------------------------
@@ -518,12 +548,15 @@ export function processElapsed(p: PlayerState, now: number): ProgressSummary {
 
   // Grant one full catch's rewards (used by the timed cast and by efficiency procs).
   const doFish = (zone: (typeof gameData.zones)[number], rareBonus: number, xpMult: number) => {
-    const rolled = rollSpecies(zone.id, rareBonus, clock);
+    const rolled = rollSpecies(zone.id, rareBonus, clock, p.pity[zone.id] || 0);
     if (!rolled) return;
+    const rolledDef = gameData.items[rolled];
+    if (rolledDef?.category === "fish") {
+      p.pity[zone.id] = rolledDef.rarity === "legendary" ? 0 : (p.pity[zone.id] || 0) + 1;
+    }
     // Independent chase roll: any fish catch can upgrade to its shiny variant.
     let species = rolled;
     let shiny = false;
-    const rolledDef = gameData.items[rolled];
     if (rolledDef?.category === "fish" && Math.random() < SHINY_CHANCE) {
       const shinyId = `shiny_${rolled}`;
       if (gameData.items[shinyId]) { species = shinyId; shiny = true; }
@@ -1043,6 +1076,7 @@ export function serializePlayer(p: PlayerState, now = Date.now()) {
     drinkBuff,
     achievements: p.achievements,
     prestige: prestigeInfo(p),
+    pity: pityInfo(p),
     action,
     queue,
   };

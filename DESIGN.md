@@ -257,7 +257,22 @@ Melvor's per-action progression layer, fishing-flavored) — not started.
       species (30-odd fish both players discovered months ago) would have
       handed an arbitrary, unearned "first" to whoever's tick happened to
       run first on deploy day.
-- [ ] Quiet bad-luck protection on legendaries — not started.
+- [x] **Bad-luck protection on legendaries** — deliberately *not* "quiet":
+      the research called out "no fake near-misses" as a guardrail, so this
+      is the honest version of pity — a real counter that visibly affects
+      the odds, shown on the zone card, not a hidden mechanic dressed up as
+      luck. `p.pity: Record<zoneId, number>` (new `pity_json` column) counts
+      consecutive non-legendary catches per zone; `rollSpecies()` in
+      `engine.ts` ramps the legendary entry's weight linearly as the count
+      climbs toward `PITY_HARD_CAP` (1500), then short-circuits to a
+      guaranteed catch at the cap — a real backstop for the unlucky tail of
+      the distribution. Resets to 0 on any legendary catch (natural or
+      pity-forced). Only the three zones with a legendary fish (Misty Lake,
+      Deep Sea, Abyssal Trench) track it; `pityInfo()` exposes per-zone
+      `{count, cap, pct}` via `serializePlayer`, rendered as a progress bar
+      on the zone card. Tested at the engine level: increments correctly,
+      resets on a legendary catch, guarantees exactly at the cap, and
+      zones without a legendary are absent from `pityInfo()`.
 
 **Tier 4 — Identity & titles (complete):**
 - [x] **Equippable titles** — rather than a separate unlock-tracking system,

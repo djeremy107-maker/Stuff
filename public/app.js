@@ -162,6 +162,8 @@ function openLegendModal() {
       <div class="legend-row">${ciChip("ci-chip-first", "🥇 First")} You were the first to ever catch that shiny or exclusive species.</div>
       <div class="legend-row">${ciChip("ci-chip-shiny", "💫 ×2")} A shiny catch — a ~1-in-450 chase variant, worth far more.</div>
       <div class="legend-row"><span class="glow-legendary" style="display:inline-block;width:14px;height:14px;border-radius:4px;border:1px solid;vertical-align:middle;"></span> Glowing border — epic/legendary rarity, or a shiny catch.</div>
+      <h3 class="legend-h">🍀 Legendary luck</h3>
+      <p class="wb-row muted">A zone with a legendary fish tracks your streak since the last one — the odds climb the longer it's been, and it's guaranteed by the number shown on the zone card. Real and honest, not a hidden mechanic.</p>
       <button class="wb-close cancel-btn">Close</button>
     </div>`;
   overlay.querySelector(".wb-close").onclick = () => overlay.remove();
@@ -567,11 +569,16 @@ function zoneCard(z) {
     .join("");
   const eff = effInfo("fishing", z.levelReq);
   const effLine = !locked && eff.pct > 0 ? `<div class="c-meta eff">⚡ ${eff.pct}% efficiency <span class="muted">(bonus catches from your level)</span></div>` : "";
+  const pity = state.player.pity?.find((x) => x.zoneId === z.id);
+  const pityLine = pity
+    ? `<div class="c-meta pity" title="Every non-legendary catch here nudges the odds; guaranteed by cast ${pity.cap.toLocaleString()}.">🍀 Legendary luck: ${pity.count.toLocaleString()}/${pity.cap.toLocaleString()}<div class="pity-bar"><span style="width:${(pity.pct * 100).toFixed(1)}%"></span></div></div>`
+    : "";
   card.innerHTML = `
     <div class="c-title">${z.icon} ${z.name}${hot ? ` <span class="hot-badge">🔥 HOTSPOT</span>` : ""}</div>
     <div class="c-meta">${z.blurb}</div>
     <div class="c-meta">Requires Fishing ${z.levelReq} · ~${z.baseTimeSec}s/cast · ${z.xpMult}× XP</div>
     ${effLine}
+    ${pityLine}
     <div class="c-io">Catches: <div class="zone-fish">${fishTags}</div></div>
   `;
   card.appendChild(cardButtons(active, locked, `🔒 Fishing ${z.levelReq}`, "Fish here", "fish", z.id));

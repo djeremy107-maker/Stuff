@@ -7,7 +7,7 @@ rods, and level up a shared **Anglers' Guild** together.
 
 Built for two people (you + your girlfriend), and designed to keep growing.
 
-## What's in it (v1.4)
+## What's in it (v1.5)
 
 - **6 fishing zones** — Backyard Pond → Riverbank → Misty Lake → Coral Harbor →
   Deep Sea → Abyssal Trench, each unlocking with your Fishing level.
@@ -125,6 +125,11 @@ Built for two people (you + your girlfriend), and designed to keep growing.
   completely untouched. A prestige is a witnessed moment: both of you see
   the same fanfare the instant it happens, and your star count shows next
   to your name everywhere.
+- **Legendary luck (bad-luck protection)** 🍀 — the three zones with a
+  legendary fish (Misty Lake, Deep Sea, Abyssal Trench) track your streak
+  since the last one. The longer it's been, the better the odds get, and
+  it's outright guaranteed by cast 1,500 — shown right on the zone card as
+  a real, honest progress bar, not a hidden mechanic.
 
 ## Run it locally
 
