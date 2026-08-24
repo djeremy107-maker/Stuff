@@ -68,9 +68,13 @@ input:focus { outline: none; border-color: var(--accent); }
   display: flex; align-items: center; gap: 16px; padding: 10px 16px;
   background: var(--bg-2); border-bottom: 1px solid var(--line);
 }
-.brand { font-weight: 700; font-size: 1.15rem; }
-.stats { display: flex; align-items: center; gap: 14px; margin-left: auto; }
-.stat { color: var(--muted); font-variant-numeric: tabular-nums; }
+.brand { font-weight: 700; font-size: 1.15rem; white-space: nowrap; }
+.stats { display: flex; align-items: center; gap: 10px; margin-left: auto; flex-wrap: wrap; }
+.stat {
+  color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap;
+  background: var(--bg-3); border: 1px solid var(--line); border-radius: 8px;
+  padding: 4px 10px; font-size: .85rem;
+}
 .stat.coins { color: var(--accent-2); }
 .hp { display: flex; align-items: center; gap: 8px; }
 .hpbar { width: 90px; height: 10px; background: var(--bg); border-radius: 6px; overflow: hidden; border: 1px solid var(--line); }
@@ -261,8 +265,46 @@ input:focus { outline: none; border-color: var(--accent); }
 @keyframes fade { 0%,80% { opacity: 1; } 100% { opacity: 0; } }
 
 @media (max-width: 900px) {
-  #layout { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; }
-  #sidebar { display: flex; flex-wrap: wrap; }
-  #rail { flex-direction: row; }
-  #rail section { flex: 1; border-bottom: none; }
+  /* Let the page scroll normally instead of nested independently-scrolling
+     panes — much more reliable on touch devices. */
+  #game { height: auto; min-height: 100vh; }
+  #layout { display: block; }
+
+  /* Topbar: brand + logout stay on one row; stats wrap onto their own
+     full-width row of chips underneath so nothing gets clipped. */
+  #topbar { flex-wrap: wrap; row-gap: 10px; padding: 12px 14px; }
+  .brand { order: 1; }
+  #logout-btn { order: 2; margin-left: auto; flex: 0 0 auto; }
+  .stats { order: 3; flex-basis: 100%; margin-left: 0; }
+
+  /* Sidebar becomes a horizontally-scrollable strip of pill tabs instead of
+     a tall stacked list that pushes all content below the fold. */
+  #sidebar {
+    display: flex; flex-wrap: nowrap; align-items: center; gap: 8px;
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    padding: 10px 12px; border-right: none; border-bottom: 1px solid var(--line);
+  }
+  #sidebar .nav-section-title { display: none; }
+  #sidebar #skill-nav, #sidebar #extra-nav { display: flex; gap: 8px; flex: 0 0 auto; }
+  #sidebar #extra-nav { padding-left: 8px; border-left: 1px solid var(--line); }
+  .nav-item {
+    flex: 0 0 auto; white-space: nowrap;
+    background: var(--bg-3); border: 1px solid var(--line); border-radius: 20px;
+    padding: 8px 14px;
+  }
+  .nav-item.active { background: var(--accent); border-color: var(--accent); color: #0d1512; box-shadow: none; }
+  .nav-item .nlvl { margin-left: 6px; }
+  .nav-item.active .nlvl { color: #0d1512; opacity: .75; }
+
+  #content { overflow-y: visible; padding: 14px; }
+
+  /* Rail sections (Guild / Party / Chat) stack full-width and readable
+     instead of being squeezed into three narrow columns. */
+  #rail { flex-direction: column; border-left: none; border-top: 1px solid var(--line); }
+  #chat-log { max-height: 240px; }
+  #party-list { max-height: 220px; overflow-y: auto; }
+
+  .cards { grid-template-columns: 1fr; }
+  .col-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+  .inv-grid { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); }
 }
