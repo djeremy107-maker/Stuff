@@ -83,6 +83,25 @@ export interface ShopEntry {
   price: number;
 }
 
+// An item purchasable with the shared Guild Marks currency (earned from
+// Merchant's Dock orders and Guild milestones) instead of coins.
+export interface MarksShopEntry {
+  item: string;
+  price: number; // in Guild Marks
+}
+
+export interface GuildMilestoneDef {
+  id: string;
+  name: string;
+  desc: string;
+  icon: string;
+  marks: number; // Guild Marks reward on unlock
+  cond:
+    | { type: "total_catches"; value: number } // shared, all fish caught by both
+    | { type: "legendary_catches"; value: number } // shared, legendary-rarity catches
+    | { type: "guild_level"; value: number };
+}
+
 export interface AchievementDef {
   id: string;
   name: string;
@@ -115,9 +134,11 @@ export interface GameData {
   zones: ZoneDef[];
   actions: ActionDef[];
   shop: ShopEntry[];
+  marksShop: MarksShopEntry[];
   achievements: AchievementDef[];
   guildRanks: string[]; // title per guild level (index = level)
   boathouseRooms: BoathouseRoomDef[];
+  guildMilestones: GuildMilestoneDef[];
   // XP awarded per catch by rarity (before a zone's xpMult).
   rarityXp: Record<Rarity, number>;
   rarityRank: Record<Rarity, number>;

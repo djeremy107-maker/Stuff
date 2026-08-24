@@ -163,9 +163,30 @@ Phase 1 is complete.
       at roughly 3–4× sell value, so coins have a floor use even after the
       Boathouse is built out.
 
-**Phase 3 — Harbor Life:** Merchant's Dock buy-orders + Notice Board + Guild Marks,
-Guild shared milestones; then the collection long-tail (shiny variants, weather/
-time exclusives) in place of combat.
+**Phase 3 — Harbor Life (mostly complete):**
+- [x] **Merchant's Dock** (`src/noticeBoard.ts`) — a daily-rotating shared
+      notice board: 3 regular orders + 1 bigger Coop Order, deterministically
+      seeded per UTC day (`mulberry32(dayKey)`) so a row reset regenerates
+      identically and no cron is needed — regeneration is just "does today's
+      dayKey match what's stored" on read. `Order.delivered` is one shared
+      cumulative counter written by whichever player calls `deliverOrder()`,
+      which is what makes the Coop Order "both contribute" fall out for free
+      with no separate per-player tracking. Paid per unit delivered
+      (`value × multiplier`), plus a one-time Guild Marks bonus on completion.
+- [x] **Guild Marks** — a new shared currency (`guild.marks`, same table as
+      the Guild's other shared counters), earned only from Dock orders and
+      Guild milestones, spent via a dedicated `marksShop` (currently Blessed
+      Lacquer) — stays meaningful even once coins are abundant.
+- [x] **Guild shared milestones** — `gameData.guildMilestones`, evaluated in
+      `engine.ts` right alongside the existing Guild-level-up check (same
+      "before/after" pattern), against three shared counters: total catches
+      (already tracked), a new `guild.legendary_catches` counter, and Guild
+      level. Unlocked ids persist in `guild.unlocked_milestones_json`; reward
+      is a one-time Marks payout, celebrated through the existing Tier 1
+      fanfare/broadcast pipeline (a milestone is just another kind of
+      `ProgressSummary` event).
+- [ ] Collection long-tail (shiny variants, weather/time exclusives) — not
+      started; still the eventual replacement for a combat pillar.
 
 ### Engagement research (see `docs/RESEARCH_ENGAGEMENT.md`)
 

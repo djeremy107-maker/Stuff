@@ -281,6 +281,13 @@ export const gameData: GameData = {
     { item: "kelp_line", price: 80 },
   ],
 
+  // Bought with Guild Marks (earned from Merchant's Dock orders & Guild
+  // milestones) instead of coins — a currency that stays meaningful even
+  // once coins are abundant.
+  marksShop: [
+    { item: "blessed_lacquer", price: 15 },
+  ],
+
   achievements: [
     { id: "first_catch", name: "First Catch", desc: "Discover your first species.", icon: "🪝", coins: 20, cond: { type: "discover", value: 1 } },
     { id: "curious", name: "Curious Angler", desc: "Discover 10 species.", icon: "🔍", coins: 120, cond: { type: "discover", value: 10 } },
@@ -329,6 +336,19 @@ export const gameData: GameData = {
       maxLevel: 5, baseCoins: 1000, costGrowth: 2.2,
       baseMaterials: [{ item: "pearl", qty: 2 }],
     },
+  ],
+
+  // Big shared goals that pay a one-time Guild Marks bonus, on top of
+  // whatever the Guild's own level curve already grants.
+  guildMilestones: [
+    { id: "gm_catches_1k", name: "First Thousand", desc: "Catch 1,000 fish together.", icon: "🎣", marks: 20, cond: { type: "total_catches", value: 1000 } },
+    { id: "gm_catches_10k", name: "Ten Thousand Catches", desc: "Catch 10,000 fish together.", icon: "🌊", marks: 60, cond: { type: "total_catches", value: 10000 } },
+    { id: "gm_catches_50k", name: "Fifty Thousand Catches", desc: "Catch 50,000 fish together.", icon: "🐋", marks: 200, cond: { type: "total_catches", value: 50000 } },
+    { id: "gm_legendary_5", name: "Into Legend", desc: "Land 5 legendary fish together.", icon: "🌟", marks: 80, cond: { type: "legendary_catches", value: 5 } },
+    { id: "gm_legendary_25", name: "Legends of the Deep", desc: "Land 25 legendary fish together.", icon: "🐉", marks: 250, cond: { type: "legendary_catches", value: 25 } },
+    { id: "gm_level_20", name: "Established Guild", desc: "Reach Guild Level 20 together.", icon: "🏛️", marks: 100, cond: { type: "guild_level", value: 20 } },
+    { id: "gm_level_40", name: "Renowned Guild", desc: "Reach Guild Level 40 together.", icon: "🏰", marks: 250, cond: { type: "guild_level", value: 40 } },
+    { id: "gm_level_60", name: "The Idyllic Guild", desc: "Reach Guild Level 60 together — the top of the bar.", icon: "👑", marks: 500, cond: { type: "guild_level", value: 60 } },
   ],
 
   guildRanks: [

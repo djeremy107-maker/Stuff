@@ -16,6 +16,7 @@ const state = {
   bank: {},
   boathouse: null,
   records: [],
+  noticeBoard: null,
   event: null,
   pendingWelcome: false,
   queueQty: 50, // 0 = infinite
@@ -113,6 +114,9 @@ function connectWs() {
     } else if (msg.type === "records") {
       state.records = msg.records || [];
       if (state.tab === "collection") renderPanel();
+    } else if (msg.type === "notice_board") {
+      state.noticeBoard = msg;
+      if (state.tab === "notice_board") renderPanel();
     } else if (msg.type === "chat_history") {
       $("#chat-log").innerHTML = "";
       msg.messages.forEach(addChatMsg);
@@ -200,7 +204,7 @@ function renderNav() {
   }
   const extra = $("#extra-nav");
   extra.innerHTML = "";
-  for (const [id, icon, label] of [["collection", "📖", "Collection"], ["achievements", "🏆", "Achievements"], ["bank", "🏦", "Shared Bank"], ["boathouse", "🏠", "Boathouse"], ["shop", "🛒", "Shop"]]) {
+  for (const [id, icon, label] of [["collection", "📖", "Collection"], ["achievements", "🏆", "Achievements"], ["notice_board", "📋", "Merchant's Dock"], ["bank", "🏦", "Shared Bank"], ["boathouse", "🏠", "Boathouse"], ["shop", "🛒", "Shop"]]) {
     const item = el("div", "nav-item" + (state.tab === id ? " active" : ""));
     item.innerHTML = `<span class="nicon">${icon}</span><span>${label}</span>`;
     item.onclick = () => selectTab(id);
@@ -223,6 +227,7 @@ function renderPanel() {
   if (state.tab === "shop") return renderShop(panel);
   if (state.tab === "bank") return renderBank(panel);
   if (state.tab === "boathouse") return renderBoathouse(panel);
+  if (state.tab === "notice_board") return renderNoticeBoard(panel);
   if (state.tab === "fishing") return renderFishing(panel);
   return renderSkill(panel, state.tab);
 }
@@ -447,6 +452,18 @@ function renderShop(panel) {
     line.appendChild(b10);
     panel.appendChild(line);
   }
+
+  const marks = state.guild?.marks ?? 0;
+  panel.appendChild(el("div", "panel-head marks-head", `<h2>🎖️ Guild Marks Shop</h2><span class="lvl">🎖️ ${marks.toLocaleString()}</span>`));
+  panel.appendChild(el("p", "panel-blurb", "Earned from Merchant's Dock orders and shared Guild milestones — spend them here."));
+  for (const entry of state.game.marksShop) {
+    const line = el("div", "shop-line");
+    line.innerHTML = `<span>${iconFor(entry.item)}</span><span class="s-name">${nameFor(entry.item)}</span><span class="s-price marks-price">🎖️ ${entry.price}</span>`;
+    const b1 = el("button", null, "Buy 1");
+    b1.onclick = () => send({ type: "buy_marks", item: entry.item, qty: 1 });
+    line.appendChild(b1);
+    panel.appendChild(line);
+  }
 }
 
 // ---- Shared Bank ----
@@ -542,6 +559,45 @@ function renderBoathouse(panel) {
     if (room.nextCost) {
       const btn = el("button", "do", `Upgrade to Lv ${room.level + 1}`);
       btn.onclick = () => send({ type: "boathouse_upgrade", room: room.id });
+      card.appendChild(btn);
+    }
+    cards.appendChild(card);
+  }
+  panel.appendChild(cards);
+}
+
+// ---------------------------------------------------------------- Notice Board (Merchant's Dock)
+function fmtHoursMin(ms) {
+  const totalMin = Math.max(0, Math.round(ms / 60000));
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+function renderNoticeBoard(panel) {
+  const nb = state.noticeBoard;
+  const marks = state.guild?.marks ?? 0;
+  panel.appendChild(el("div", "panel-head", `<h2>📋 Merchant's Dock</h2><span class="lvl">🎖️ ${marks.toLocaleString()} Guild Marks</span>`));
+  panel.appendChild(el("p", "panel-blurb", "Daily buy-orders at premium prices — a reason to pick tonight's target. The Coop Order needs a bigger haul; either (or both) of you can chip in."));
+  if (!nb) return void panel.appendChild(el("p", "empty-note", "Loading…"));
+  panel.appendChild(el("p", "muted small-note", `New orders in ${fmtHoursMin(nb.nextRefreshAt - Date.now())}.`));
+
+  const cards = el("div", "cards");
+  for (const order of nb.orders) {
+    const have = state.player.inventory[order.item] || 0;
+    const remainingQty = order.qty - order.delivered;
+    const pct = Math.min(100, (order.delivered / order.qty) * 100);
+    const card = el("div", "card" + (order.completed ? " maxed" : "") + (order.coop ? " coop-order" : ""));
+    card.innerHTML = `
+      <div class="c-title">${order.coop ? "🤝 Coop Order" : "📦 Order"} <span class="muted">${iconFor(order.item)} ${nameFor(order.item)}</span></div>
+      <div class="c-meta">Deliver ${order.qty.toLocaleString()}× for ${order.multiplier}× value each · 🎖️ ${order.marksReward} on completion</div>
+      <div class="order-bar"><span style="width:${pct}%"></span></div>
+      <div class="c-meta">${order.completed ? "✅ Fulfilled today!" : `${order.delivered.toLocaleString()}/${order.qty.toLocaleString()} delivered · you have ${have.toLocaleString()}`}</div>
+    `;
+    if (!order.completed) {
+      const giveQty = Math.min(have, remainingQty);
+      const btn = el("button", "do", giveQty > 0 ? `Deliver ${giveQty.toLocaleString()}` : "Nothing to deliver");
+      btn.disabled = giveQty < 1;
+      btn.onclick = () => send({ type: "deliver_order", orderId: order.id, qty: giveQty });
       card.appendChild(btn);
     }
     cards.appendChild(card);
@@ -750,7 +806,7 @@ function renderGuild() {
   const pct = g.needed > 0 ? (g.into / g.needed) * 100 : 100;
   box.innerHTML = `
     <div class="g-level">Guild Level ${g.level}${g.level >= g.maxLevel ? " (max)" : ""}</div>
-    <div class="g-sub">${g.total.toLocaleString()} fish caught together</div>
+    <div class="g-sub">${g.total.toLocaleString()} fish caught together · 🎖️ ${g.marks.toLocaleString()} Guild Marks</div>
     <div class="g-bar"><span style="width:${pct}%"></span></div>
     <div class="g-perk">🎣 +${Math.round(g.speedBonus * 100)}% faster casts for both${g.efficiencyBonus > 0 ? ` · ⚡ +${Math.round(g.efficiencyBonus * 100)}% efficiency` : ""}${g.needed > 0 ? ` · ${(g.needed - g.into).toLocaleString()} to next level` : ""}</div>
   `;
@@ -853,7 +909,7 @@ function highestMilestone(from, to) {
 
 function handleSummary(summary) {
   if (!summary) return;
-  const hasNews = summary.completions > 0 || (summary.levelUps || []).length || (summary.notableCatches || []).length || summary.guildLevelUp;
+  const hasNews = summary.completions > 0 || (summary.levelUps || []).length || (summary.notableCatches || []).length || summary.guildLevelUp || (summary.guildMilestones || []).length;
   if (state.pendingWelcome) {
     // First sync after connecting (may include a long offline catch-up) — fold
     // everything into one recap instead of firing a flurry of live celebrations.
@@ -865,6 +921,7 @@ function handleSummary(summary) {
   for (const lv of summary.levelUps || []) celebrateLevelUp(lv);
   for (const c of summary.notableCatches || []) celebrateCatch(c);
   if (summary.guildLevelUp) celebrateGuildLevelUp(summary.guildLevelUp);
+  for (const m of summary.guildMilestones || []) celebrateGuildMilestone(m);
   for (const a of summary.newAchievements || []) toast(`🏆 ${a.icon} ${a.name} unlocked! +🪙${a.coins}`);
 }
 
@@ -893,6 +950,10 @@ function showWelcome(summary) {
   const guildHtml = summary.guildLevelUp
     ? `<div class="wb-row">🏛️ <b>Anglers' Guild reached Level ${summary.guildLevelUp.to}!</b></div>`
     : "";
+  const milestones = (summary.guildMilestones || [])
+    .map((m) => `<span class="tag-item r-legendary">${m.icon} ${m.name} · 🎖️ +${m.marks}</span>`)
+    .join(" ");
+  const milestoneHtml = milestones ? `<div class="wb-row"><b>🎖️ Guild milestone!</b> ${milestones}</div>` : "";
   overlay.innerHTML = `
     <div class="modal">
       <h2>🎣 While you were away…</h2>
@@ -902,6 +963,7 @@ function showWelcome(summary) {
       ${notableHtml}
       ${levelHtml}
       ${guildHtml}
+      ${milestoneHtml}
       <div class="wb-row muted">${xpHtml}${summary.coinsGained ? ` · 🪙 +${summary.coinsGained.toLocaleString()}` : ""}</div>
       <button class="primary wb-close">Nice!</button>
     </div>`;
@@ -935,6 +997,10 @@ function celebrateCatch(c) {
 }
 function celebrateGuildLevelUp(g) {
   showFanfare(`🏛️ Anglers' Guild — Level ${g.to}!<br><span class="ff-sub">Faster casts for both of you</span>`, "guild", 4000);
+}
+function celebrateGuildMilestone(m) {
+  burstConfetti();
+  showFanfare(`${m.icon} ${m.name}!<br><span class="ff-sub">+${m.marks} Guild Marks for both of you</span>`, "guild", 4500);
 }
 
 function showFanfare(html, cls, durationMs) {

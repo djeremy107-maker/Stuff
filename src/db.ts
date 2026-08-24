@@ -66,7 +66,15 @@ db.exec(`
     holder_name    TEXT NOT NULL,
     size           REAL NOT NULL,
     ts             INTEGER NOT NULL
-  );`);
+  );
+
+  -- The Merchant's Dock: a daily-rotating shared notice board of buy-orders.
+  CREATE TABLE IF NOT EXISTS notice_board (
+    id           INTEGER PRIMARY KEY CHECK (id = 1),
+    orders_json  TEXT NOT NULL DEFAULT '[]',
+    refreshed_at INTEGER NOT NULL DEFAULT 0
+  );
+  INSERT OR IGNORE INTO notice_board (id, orders_json, refreshed_at) VALUES (1, '[]', 0);`);
 
 // Lightweight migrations for databases created before a column existed.
 function ensureColumn(table: string, column: string, ddl: string) {
@@ -78,6 +86,9 @@ ensureColumn("characters", "achievements_json", "achievements_json TEXT NOT NULL
 ensureColumn("characters", "queue_json", "queue_json TEXT NOT NULL DEFAULT '[]'");
 ensureColumn("characters", "loadout_json", "loadout_json TEXT NOT NULL DEFAULT '{}'");
 ensureColumn("characters", "enhancements_json", "enhancements_json TEXT NOT NULL DEFAULT '{}'");
+ensureColumn("guild", "marks", "marks INTEGER NOT NULL DEFAULT 0");
+ensureColumn("guild", "legendary_catches", "legendary_catches INTEGER NOT NULL DEFAULT 0");
+ensureColumn("guild", "unlocked_milestones_json", "unlocked_milestones_json TEXT NOT NULL DEFAULT '[]'");
 
 db.exec(`
 

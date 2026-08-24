@@ -31,12 +31,29 @@ for (let lvl = 1; lvl <= GUILD_MAX_LEVEL; lvl++) {
   guildCumulative[lvl] = guildCumulative[lvl - 1] + needed;
 }
 
-const selectGuild = db.prepare("SELECT total_catches FROM guild WHERE id = 1");
+const selectGuild = db.prepare("SELECT total_catches, legendary_catches, marks, unlocked_milestones_json FROM guild WHERE id = 1");
 const addGuild = db.prepare("UPDATE guild SET total_catches = total_catches + ? WHERE id = 1");
+const addLegendaryCatches = db.prepare("UPDATE guild SET legendary_catches = legendary_catches + ? WHERE id = 1");
+const setUnlockedMilestones = db.prepare("UPDATE guild SET unlocked_milestones_json = ? WHERE id = 1");
+
+interface GuildRow {
+  total_catches: number;
+  legendary_catches: number;
+  marks: number;
+  unlocked_milestones_json: string;
+}
+function guildRow(): GuildRow {
+  return (selectGuild.get() as GuildRow | undefined) ?? { total_catches: 0, legendary_catches: 0, marks: 0, unlocked_milestones_json: "[]" };
+}
 
 export function guildTotalCatches(): number {
-  const row = selectGuild.get() as { total_catches: number } | undefined;
-  return row?.total_catches ?? 0;
+  return guildRow().total_catches;
+}
+export function guildLegendaryCatches(): number {
+  return guildRow().legendary_catches;
+}
+export function guildMarks(): number {
+  return guildRow().marks;
 }
 export function guildLevel(total = guildTotalCatches()): number {
   let lvl = 0;
@@ -52,10 +69,15 @@ export function guildEfficiencyBonus(level = guildLevel()): number {
   return Math.max(0, level - 20) * 0.002;
 }
 export function guildInfo() {
-  const total = guildTotalCatches();
+  const row = guildRow();
+  const total = row.total_catches;
   const level = guildLevel(total);
   const into = total - guildCumulative[level];
   const needed = level >= GUILD_MAX_LEVEL ? 0 : guildCumulative[level + 1] - guildCumulative[level];
+  const unlocked: string[] = row.unlocked_milestones_json ? JSON.parse(row.unlocked_milestones_json) : [];
+  const milestones = gameData.guildMilestones.map((m) => ({
+    id: m.id, name: m.name, desc: m.desc, icon: m.icon, marks: m.marks, unlocked: unlocked.includes(m.id),
+  }));
   return {
     total,
     level,
@@ -64,6 +86,9 @@ export function guildInfo() {
     needed,
     speedBonus: guildSpeedBonus(level),
     efficiencyBonus: guildEfficiencyBonus(level),
+    legendaryCatches: row.legendary_catches,
+    marks: row.marks,
+    milestones,
   };
 }
 
@@ -355,6 +380,7 @@ export interface ProgressSummary {
   notableCatches: { item: string; rarity: string; size: number }[]; // epic/legendary
   newRecords: { item: string; size: number; previousHolder: string | null }[]; // Trophy Hall
   guildLevelUp: { from: number; to: number } | null;
+  guildMilestones: { id: string; name: string; icon: string; marks: number }[];
   stopped?: "no_inputs";
 }
 
@@ -444,7 +470,7 @@ function promoteNext(p: PlayerState): boolean {
 export function processElapsed(p: PlayerState, now: number): ProgressSummary {
   const summary: ProgressSummary = {
     completions: 0, bonus: 0, xpGained: {}, itemsGained: {}, coinsGained: 0,
-    newSpecies: [], newAchievements: [], levelUps: [], notableCatches: [], newRecords: [], guildLevelUp: null,
+    newSpecies: [], newAchievements: [], levelUps: [], notableCatches: [], newRecords: [], guildLevelUp: null, guildMilestones: [],
   };
   const addItemSum = (id: string, q: number) => (summary.itemsGained[id] = (summary.itemsGained[id] || 0) + q);
   const addXpSum = (s: string, x: number) => (summary.xpGained[s] = (summary.xpGained[s] || 0) + x);
@@ -454,6 +480,7 @@ export function processElapsed(p: PlayerState, now: number): ProgressSummary {
   for (const s of gameData.skills) levelsBefore[s.id] = skillLevel(p, s.id);
 
   let guildCatches = 0;
+  let legendaryCatches = 0;
 
   // Grant one full catch's rewards (used by the timed cast and by efficiency procs).
   const doFish = (zone: (typeof gameData.zones)[number], rareBonus: number, xpMult: number) => {
@@ -472,6 +499,7 @@ export function processElapsed(p: PlayerState, now: number): ProgressSummary {
     const rarity = def?.rarity ?? "common";
     if (def?.category === "fish" && (rarity === "epic" || rarity === "legendary")) {
       summary.notableCatches.push({ item: species, rarity, size });
+      if (rarity === "legendary") legendaryCatches++;
     }
     if (def?.category === "fish" && size > 0) {
       const rec = checkAndSetRecord(species, size, p.userId, p.name);
@@ -578,6 +606,8 @@ export function processElapsed(p: PlayerState, now: number): ProgressSummary {
     const after = guildLevel();
     if (after > before) summary.guildLevelUp = { from: before, to: after };
   }
+  if (legendaryCatches > 0) addLegendaryCatches.run(legendaryCatches);
+  if (guildCatches > 0 || legendaryCatches > 0) evaluateGuildMilestones(summary);
 
   for (const s of gameData.skills) {
     const to = skillLevel(p, s.id);
@@ -587,6 +617,32 @@ export function processElapsed(p: PlayerState, now: number): ProgressSummary {
   evaluateAchievements(p, summary);
   p.updatedAt = now;
   return summary;
+}
+
+// Check every not-yet-unlocked shared Guild milestone; grant Guild Marks for
+// newly-met ones. Only worth checking when guild counters just moved.
+const addGuildMarksStmt = db.prepare("UPDATE guild SET marks = marks + ? WHERE id = 1");
+function evaluateGuildMilestones(summary: ProgressSummary) {
+  const row = guildRow();
+  const unlocked: string[] = row.unlocked_milestones_json ? JSON.parse(row.unlocked_milestones_json) : [];
+  const level = guildLevel(row.total_catches);
+  let changed = false;
+  for (const m of gameData.guildMilestones) {
+    if (unlocked.includes(m.id)) continue;
+    let met = false;
+    switch (m.cond.type) {
+      case "total_catches": met = row.total_catches >= m.cond.value; break;
+      case "legendary_catches": met = row.legendary_catches >= m.cond.value; break;
+      case "guild_level": met = level >= m.cond.value; break;
+    }
+    if (met) {
+      unlocked.push(m.id);
+      changed = true;
+      addGuildMarksStmt.run(m.marks);
+      summary.guildMilestones.push({ id: m.id, name: m.name, icon: m.icon, marks: m.marks });
+    }
+  }
+  if (changed) setUnlockedMilestones.run(JSON.stringify(unlocked));
 }
 
 // --------------------------------------------------------------------------

@@ -7,7 +7,7 @@ rods, and level up a shared **Anglers' Guild** together.
 
 Built for two people (you + your girlfriend), and designed to keep growing.
 
-## What's in it (v0.9)
+## What's in it (v1.0)
 
 - **6 fishing zones** — Backyard Pond → Riverbank → Misty Lake → Coral Harbor →
   Deep Sea → Abyssal Trench, each unlocking with your Fishing level.
@@ -54,6 +54,13 @@ Built for two people (you + your girlfriend), and designed to keep growing.
   falls).
 - **A bigger shop** — sells materials, bait, and tier-1 gear at fair prices,
   so coins always have something to do.
+- **The Merchant's Dock** 📋 — a daily-rotating notice board of buy-orders at
+  premium prices (1.5–2× value), a reason to pick "tonight's target." Three
+  regular orders plus a bigger **Coop Order** either (or both) of you can
+  chip in on. Completing one pays **Guild Marks**.
+- **Guild Marks** 🎖️ — a shared currency earned from Dock orders and new
+  **shared Guild milestones** (catches together, legendary catches together,
+  Guild level), spendable on Blessed Lacquer via a dedicated Guild Marks shop.
 - **Supporting trade skills**: **Foraging** (bait & materials), **Tackle
   Crafting** (bait, hooks, line, and better **rods**), **Cooking** (turn fish
   into valuable dishes).

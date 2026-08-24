@@ -40,6 +40,7 @@ import { loadBank, saveBank, deposit, withdraw } from "./bank.js";
 import { boathouseInfo, upgradeRoom, tickBaitGarden } from "./boathouse.js";
 import { contributeToPurse } from "./purse.js";
 import { allRecords } from "./records.js";
+import { noticeBoardInfo, deliverOrder, buyWithMarks } from "./noticeBoard.js";
 import { startEvents, getActiveEvent } from "./events.js";
 import { levelForXp } from "./leveling.js";
 
@@ -144,6 +145,9 @@ function broadcastBoathouse() {
 function broadcastRecords() {
   broadcast({ type: "records", records: allRecords() });
 }
+function broadcastNoticeBoard() {
+  broadcast({ type: "notice_board", ...noticeBoardInfo() });
+}
 
 // Live hotspot events — rotate a boosted zone and tell everyone.
 startEvents((event) => broadcast({ type: "event", event }));
@@ -210,6 +214,9 @@ function announceSummary(p: PlayerState, summary: ProgressSummary) {
     systemMsg(p.userId, `🏆 ${p.name} set a new Trophy Hall record — ${label} at ${r.size}cm${beat}`);
   }
   if (summary.newRecords.length) broadcastRecords();
+  for (const m of summary.guildMilestones) {
+    systemMsg(p.userId, `🎖️ Guild milestone reached — ${m.icon} ${m.name}! +${m.marks} Guild Marks`);
+  }
 }
 
 // ---- Tick ----
@@ -254,6 +261,7 @@ wss.on("connection", (ws, req) => {
   ws.send(JSON.stringify({ type: "event", event: getActiveEvent() }));
   ws.send(JSON.stringify({ type: "boathouse", ...boathouseInfo() }));
   ws.send(JSON.stringify({ type: "records", records: allRecords() }));
+  ws.send(JSON.stringify({ type: "notice_board", ...noticeBoardInfo() }));
   broadcastPresence();
 
   ws.on("message", (raw) => {
@@ -323,6 +331,24 @@ wss.on("connection", (ws, req) => {
       case "purse_contribute":
         withPlayer(userId, (p) => ({ actionResult: contributeToPurse(p, Number(msg.amount ?? 0)) }));
         broadcastBoathouse();
+        break;
+      case "deliver_order": {
+        let completedOrder = false;
+        withPlayer(userId, (p) => {
+          const result = deliverOrder(p, String(msg.orderId), Number(msg.qty ?? 1));
+          if (result.ok && result.completed) {
+            completedOrder = true;
+            systemMsg(userId, `📦 ${p.name} completed a Merchant's Dock order! +${result.marks} Guild Marks`);
+          }
+          return { actionResult: result };
+        });
+        broadcastNoticeBoard();
+        if (completedOrder) broadcastPresence();
+        break;
+      }
+      case "buy_marks":
+        withPlayer(userId, (p) => ({ actionResult: buyWithMarks(p, String(msg.item), Number(msg.qty ?? 1)) }));
+        broadcastPresence();
         break;
       case "sell":
         withPlayer(userId, (p) => ({ actionResult: sellItem(p, String(msg.item), Number(msg.qty ?? 1)) }));

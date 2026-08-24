@@ -293,6 +293,15 @@ input:focus { outline: none; border-color: var(--accent); }
   to { top: 100vh; opacity: 0; }
 }
 
+/* ---------- Merchant's Dock ---------- */
+.small-note { font-size: .82rem; margin: -8px 0 16px; }
+.order-bar { height: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; overflow: hidden; margin: 8px 0; }
+.order-bar > span { display: block; height: 100%; background: var(--accent-2); }
+.card.coop-order { border-color: var(--xp); }
+.card.coop-order .c-title { color: var(--xp); }
+.marks-head { margin-top: 28px; }
+.marks-price { color: var(--xp); }
+
 /* ---------- Boathouse ---------- */
 .room-dots { display: flex; gap: 4px; margin: 2px 0 6px; }
 .room-dot { width: 14px; height: 6px; border-radius: 3px; background: var(--bg); border: 1px solid var(--line); }
