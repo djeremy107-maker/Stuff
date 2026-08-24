@@ -265,9 +265,32 @@ streaks — not started.
 
 ### Later / polish
 - [ ] Prestige layer ("master angler" rebirth) for long-term idle depth.
-- [ ] Art pass (sprites instead of emoji), ambient sound.
-- [ ] Push notifications when your bag is full / a legendary bites.
-- [ ] Mobile layout refinements.
+- [x] **Finishing coat** (art pass / sound / notifications / mobile polish) —
+      no sprite budget, so "art pass" stayed CSS/motion: a drifting-bubble
+      ambiance on `.auth-screen` (two layered `::before`/`::after` radial-
+      gradient fields, offset animation delays so they don't sync), a pulsing
+      rarity glow (`.glow-epic`/`.glow-legendary`, `box-shadow` + `border-color`
+      keyframes) on epic/legendary entries in Collection and Inventory, and a
+      shimmer sweep across the active `#action-banner` progress fill. All gated
+      behind `prefers-reduced-motion`.
+      **Sound** — procedural Web Audio (`tone()` primitive: oscillator + gain
+      envelope, no audio files) composed into named cues (catch, level-up,
+      achievement, guild, notify, error) wired into every existing celebration/
+      feedback point; toggleable, defaults on.
+      **Notifications** — opt-in browser `Notification` API, fires only when
+      `document.hidden` — level-ups, catches, achievements, and (this is the
+      point) your partner's chat/system messages while you're tabbed away.
+      Both toggles live in a new settings modal (⚙️ next to Log out),
+      persisted to `localStorage` per device.
+      **Shared celebration broadcast** — Guild level-ups/milestones are
+      inherently witnessed-by-both events, so they now go out as a dedicated
+      `{type:"celebration"}` WS broadcast to every connected client instead of
+      firing only on the acting player's `handleSummary()` — verified live
+      with a two-client WS test, including a passive (non-fishing) player
+      receiving the identical payload.
+      **Mobile** — re-verified the Phase 2/3 panels (Boathouse, Notice Board,
+      Shop) and the new settings modal at 390×844; no regressions, no changes
+      needed beyond the original mobile pass.
 
 ## Balancing notes (initial, tune freely)
 

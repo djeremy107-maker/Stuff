@@ -27,6 +27,103 @@ const state = {
 
 const RARITY_ORDER = ["common", "uncommon", "rare", "epic", "legendary"];
 
+state.soundOn = localStorage.getItem("idyll_sound") !== "off"; // default on
+state.notifyOn = localStorage.getItem("idyll_notify") === "on"; // default off — needs explicit opt-in
+
+// ---------------------------------------------------------------- Sound (procedural — no external audio files)
+let audioCtx = null;
+function getAudioCtx() {
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return null;
+  if (!audioCtx) audioCtx = new Ctx();
+  if (audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
+  return audioCtx;
+}
+function tone(freq, startDelay, duration, { type = "sine", gain = 0.14 } = {}) {
+  if (!state.soundOn) return;
+  const ctx = getAudioCtx();
+  if (!ctx) return;
+  try {
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    osc.connect(g);
+    g.connect(ctx.destination);
+    const t0 = ctx.currentTime + startDelay;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(gain, t0 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+    osc.start(t0);
+    osc.stop(t0 + duration + 0.05);
+  } catch {}
+}
+function sfxCatch(rarity) {
+  if (rarity === "legendary") { tone(523, 0, .16); tone(659, .09, .16); tone(784, .18, .16); tone(1047, .27, .35, { gain: .18 }); }
+  else { tone(523, 0, .14); tone(698, .09, .14); tone(880, .18, .28, { gain: .16 }); }
+}
+function sfxLevelUp(milestone) {
+  if (milestone) { tone(392, 0, .14); tone(523, .11, .14); tone(659, .22, .14); tone(784, .33, .4, { gain: .16 }); }
+  else { tone(523, 0, .1, { gain: .1 }); tone(659, .08, .16, { gain: .1 }); }
+}
+function sfxAchievement() { tone(587, 0, .1, { gain: .12 }); tone(880, .09, .22, { gain: .14 }); }
+function sfxGuild() { tone(440, 0, .14); tone(554, .1, .14); tone(659, .2, .14); tone(880, .3, .4, { gain: .16 }); }
+function sfxNotify() { tone(700, 0, .08, { type: "triangle", gain: .08 }); tone(900, .05, .1, { type: "triangle", gain: .07 }); }
+function sfxError() { tone(300, 0, .12, { type: "triangle", gain: .09 }); tone(220, .08, .16, { type: "triangle", gain: .09 }); }
+
+// A one-time "unlock" nudge — browsers block audio until a user gesture.
+document.addEventListener("click", () => getAudioCtx(), { once: true });
+
+// ---------------------------------------------------------------- Browser notifications
+function notify(title, body, tag) {
+  if (!state.notifyOn) return;
+  if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+  if (!document.hidden) return; // they're already looking — no need to interrupt
+  try {
+    new Notification(title, { body, tag, silent: true });
+  } catch {}
+}
+async function requestNotifyPermission() {
+  if (typeof Notification === "undefined") return "unsupported";
+  if (Notification.permission === "granted") return "granted";
+  if (Notification.permission === "denied") return "denied";
+  try { return await Notification.requestPermission(); } catch { return "denied"; }
+}
+
+// ---------------------------------------------------------------- Settings popover
+$("#settings-btn").onclick = () => {
+  const overlay = el("div", "modal-overlay");
+  const permission = typeof Notification === "undefined" ? "unsupported" : Notification.permission;
+  const notifyStatusTxt = permission === "unsupported" ? "not supported in this browser"
+    : permission === "denied" ? "blocked — enable it in your browser's site settings"
+    : permission === "granted" ? (state.notifyOn ? "on" : "off (allowed, but toggled off)")
+    : "not yet enabled";
+  overlay.innerHTML = `
+    <div class="modal">
+      <h2>⚙️ Settings</h2>
+      <label class="lacquer-ctl"><input type="checkbox" id="sound-toggle" ${state.soundOn ? "checked" : ""}/> 🔊 Sound effects</label>
+      <label class="lacquer-ctl"><input type="checkbox" id="notify-toggle" ${state.notifyOn ? "checked" : ""} ${permission === "unsupported" ? "disabled" : ""}/> 🔔 Browser notifications <span class="muted">(${notifyStatusTxt})</span></label>
+      <p class="wb-row muted">Notifications only fire while this tab is in the background — level-ups, rare catches, and your partner's big moments.</p>
+      <button class="wb-close cancel-btn">Close</button>
+    </div>`;
+  overlay.querySelector(".wb-close").onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  overlay.querySelector("#sound-toggle").onchange = (e) => {
+    state.soundOn = e.target.checked;
+    localStorage.setItem("idyll_sound", state.soundOn ? "on" : "off");
+    if (state.soundOn) sfxNotify();
+  };
+  overlay.querySelector("#notify-toggle").onchange = async (e) => {
+    if (e.target.checked) {
+      const result = await requestNotifyPermission();
+      if (result !== "granted") { e.target.checked = false; toast(result === "denied" ? "Notifications are blocked in your browser." : "Notifications aren't supported here."); return; }
+    }
+    state.notifyOn = e.target.checked;
+    localStorage.setItem("idyll_notify", state.notifyOn ? "on" : "off");
+  };
+  document.body.appendChild(overlay);
+};
+
 // ---------------------------------------------------------------- Auth UI
 let authMode = "login";
 $("#tab-login").onclick = () => setAuthMode("login");
@@ -91,10 +188,13 @@ function connectWs() {
       state.player = msg.player;
       onStateUpdate(msg.summary);
       handleSummary(msg.summary);
-      if (msg.actionResult && !msg.actionResult.ok) toast(msg.actionResult.error);
+      if (msg.actionResult && !msg.actionResult.ok) { sfxError(); toast(msg.actionResult.error); }
       else if (msg.actionResult && typeof msg.actionResult.success === "boolean") {
-        if (msg.actionResult.success) { burstConfetti(); toast(`✨ Enhancement succeeded! Now +${msg.actionResult.newPlus}`); }
-        else toast(`💨 Enhancement failed — materials lost, rod is safe.`);
+        if (msg.actionResult.success) { sfxAchievement(); burstConfetti(); toast(`✨ Enhancement succeeded! Now +${msg.actionResult.newPlus}`); }
+        else { sfxError(); toast(`💨 Enhancement failed — materials lost, rod is safe.`); }
+      } else if (msg.actionResult && msg.actionResult.completed) {
+        sfxAchievement();
+        toast(`📦 Order fulfilled! +🪙${msg.actionResult.coins?.toLocaleString() ?? 0} · 🎖️ +${msg.actionResult.marks}`);
       }
     } else if (msg.type === "event") {
       state.event = msg.event;
@@ -117,6 +217,10 @@ function connectWs() {
     } else if (msg.type === "notice_board") {
       state.noticeBoard = msg;
       if (state.tab === "notice_board") renderPanel();
+    } else if (msg.type === "celebration") {
+      // A shared moment (Guild level-up / milestone) — everyone sees the same fanfare at once.
+      if (msg.kind === "guildLevelUp") celebrateGuildLevelUp(msg.data);
+      else if (msg.kind === "guildMilestone") celebrateGuildMilestone(msg.data);
     } else if (msg.type === "chat_history") {
       $("#chat-log").innerHTML = "";
       msg.messages.forEach(addChatMsg);
@@ -124,6 +228,15 @@ function connectWs() {
     } else if (msg.type === "chat") {
       addChatMsg(msg.message);
       scrollChat();
+      const isMine = state.player && msg.message.user_id === state.player.userId;
+      if (!isMine) {
+        if (msg.message.kind === "system") {
+          sfxNotify();
+          notify("Idyll", msg.message.text, "partner-update");
+        } else if (document.hidden) {
+          notify(msg.message.name, msg.message.text, "chat");
+        }
+      }
     } else if (msg.type === "error" && msg.error === "Not authenticated.") {
       localStorage.removeItem("idyll_token");
       location.reload();
@@ -423,7 +536,9 @@ function renderCollection(panel) {
       const rec = p.bestiary[f.item];
       const worldRecord = state.records.find((r) => r.species === f.item);
       const trophyLine = worldRecord ? `<div class="ci-record">🏆 Record: ${escapeHtml(worldRecord.holder_name)} — ${worldRecord.size}cm</div>` : "";
-      const item = el("div", "col-item" + (rec ? "" : " uncaught"));
+      const rarity = rarityOf(f.item);
+      const glowCls = rec && (rarity === "epic" || rarity === "legendary") ? ` glow-${rarity}` : "";
+      const item = el("div", "col-item" + (rec ? "" : " uncaught") + glowCls);
       item.innerHTML = `
         <div class="ci-top"><span class="ci-icon">${rec ? iconFor(f.item) : "❔"}</span>
           <span class="ci-name ${rarityCls(f.item)}"><span class="rar-dot bg-${rarityOf(f.item)}"></span>${rec ? nameFor(f.item) : "???"}</span></div>
@@ -627,7 +742,9 @@ function renderInventory() {
       (isReel && p.equipped.reel === id) || (isLine && p.equipped.line === id) ||
       (isTool && p.equipped[toolSlot] === id) ||
       (isFood && p.loadout.food === id) || (isDrink && p.loadout.drink === id);
-    const item = el("div", "inv-item" + (equipped ? " equipped" : ""));
+    const rarity = rarityOf(id);
+    const glowCls = rarity === "epic" || rarity === "legendary" ? ` glow-${rarity}` : "";
+    const item = el("div", "inv-item" + (equipped ? " equipped" : "") + glowCls);
     item.title = valueFor(id) != null ? `${nameFor(id)} — sells for 🪙${valueFor(id)}` : nameFor(id);
     const plus = isRod ? (p.enhancements[id] || 0) : 0;
     const plusBadge = plus > 0 ? ` <span class="plus-badge">+${plus}</span>` : "";
@@ -917,12 +1034,16 @@ function handleSummary(summary) {
     if (hasNews) showWelcome(summary);
     return;
   }
-  // Live: celebrate each moment as it happens.
+  // Live: celebrate each moment as it happens. Guild-level events (shared
+  // with your partner) arrive separately via the "celebration" broadcast, so
+  // both of you see the exact same fanfare at the same time — not handled here.
   for (const lv of summary.levelUps || []) celebrateLevelUp(lv);
   for (const c of summary.notableCatches || []) celebrateCatch(c);
-  if (summary.guildLevelUp) celebrateGuildLevelUp(summary.guildLevelUp);
-  for (const m of summary.guildMilestones || []) celebrateGuildMilestone(m);
-  for (const a of summary.newAchievements || []) toast(`🏆 ${a.icon} ${a.name} unlocked! +🪙${a.coins}`);
+  for (const a of summary.newAchievements || []) {
+    sfxAchievement();
+    toast(`🏆 ${a.icon} ${a.name} unlocked! +🪙${a.coins}`);
+    notify("Achievement unlocked! 🏆", `${a.icon} ${a.name}`, "achievement");
+  }
 }
 
 function showWelcome(summary) {
@@ -982,25 +1103,33 @@ function skillName(id) {
 function celebrateLevelUp(lv) {
   const milestone = highestMilestone(lv.from, lv.to);
   const label = `${skillIcon(lv.skill)} ${skillName(lv.skill)} — Level ${lv.to}!`;
+  sfxLevelUp(!!milestone);
   if (milestone) {
     burstConfetti();
     showFanfare(`🎉 ${label}${lv.to === 99 ? " Max level!" : ""}`, "milestone", 4200);
+    notify("Level up! 🎉", label, "levelup");
   } else {
     toast(`⬆️ ${label}`);
   }
 }
 function celebrateCatch(c) {
   const legendary = c.rarity === "legendary";
+  sfxCatch(c.rarity);
   if (legendary) burstConfetti();
   const tag = legendary ? "🌟 LEGENDARY CATCH" : "✨ Epic catch";
   showFanfare(`${tag}<br><span class="ff-sub">${iconFor(c.item)} ${nameFor(c.item)} — ${c.size}cm</span>`, `r-${c.rarity}`, legendary ? 4500 : 3200);
+  notify(tag, `${nameFor(c.item)} — ${c.size}cm`, "catch");
 }
 function celebrateGuildLevelUp(g) {
+  sfxGuild();
   showFanfare(`🏛️ Anglers' Guild — Level ${g.to}!<br><span class="ff-sub">Faster casts for both of you</span>`, "guild", 4000);
+  notify("Guild Level Up! 🏛️", `The Anglers' Guild reached Level ${g.to}.`, "guild");
 }
 function celebrateGuildMilestone(m) {
+  sfxGuild();
   burstConfetti();
   showFanfare(`${m.icon} ${m.name}!<br><span class="ff-sub">+${m.marks} Guild Marks for both of you</span>`, "guild", 4500);
+  notify("Guild Milestone! 🎖️", `${m.name} — +${m.marks} Guild Marks`, "guild");
 }
 
 function showFanfare(html, cls, durationMs) {

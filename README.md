@@ -7,7 +7,7 @@ rods, and level up a shared **Anglers' Guild** together.
 
 Built for two people (you + your girlfriend), and designed to keep growing.
 
-## What's in it (v1.0)
+## What's in it (v1.1)
 
 - **6 fishing zones** — Backyard Pond → Riverbank → Misty Lake → Coral Harbor →
   Deep Sea → Abyssal Trench, each unlocking with your Fishing level.
@@ -85,6 +85,17 @@ Built for two people (you + your girlfriend), and designed to keep growing.
 - **Live coop** — a party panel shows what your partner is doing and their
   progress; shared chat.
 - **Accounts** with saved characters (SQLite), playable from anywhere.
+- **Sound & notifications** ⚙️ — procedural sound effects (catches, level-ups,
+  achievements, guild moments, errors — no audio files, just Web Audio tones)
+  and opt-in browser notifications for your partner's big moments while the
+  tab is in the background. Toggle both from the new settings button next to
+  Log out; preferences persist locally per device.
+- **Shared celebrations** — Guild level-ups and Guild milestones now broadcast
+  to *both* players the instant they happen, so you see the exact same fanfare
+  at the same moment — even if you weren't the one fishing.
+- **A finishing coat** — a subtle drifting-bubble ambiance on the login screen,
+  a pulsing glow on epic/legendary catches in your Collection and Inventory,
+  and a shimmer sweep on the active-action progress bar.
 
 ## Run it locally
 

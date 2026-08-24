@@ -206,6 +206,8 @@ function announceSummary(p: PlayerState, summary: ProgressSummary) {
   }
   if (summary.guildLevelUp) {
     systemMsg(p.userId, `🏛️ The Anglers' Guild reached Level ${summary.guildLevelUp.to}!`);
+    // Shared moment — both of you should see the fanfare, not just whoever's catch tipped it over.
+    broadcast({ type: "celebration", kind: "guildLevelUp", data: summary.guildLevelUp });
   }
   for (const r of summary.newRecords) {
     const def = gameData.items[r.item];
@@ -216,6 +218,7 @@ function announceSummary(p: PlayerState, summary: ProgressSummary) {
   if (summary.newRecords.length) broadcastRecords();
   for (const m of summary.guildMilestones) {
     systemMsg(p.userId, `🎖️ Guild milestone reached — ${m.icon} ${m.name}! +${m.marks} Guild Marks`);
+    broadcast({ type: "celebration", kind: "guildMilestone", data: m });
   }
 }
 
