@@ -2,6 +2,7 @@ import { db, type CharacterRow } from "./db.js";
 import { gameData, zonesById, actionsById, shopByItem } from "./content/gameData.js";
 import type { SkillId } from "./content/types.js";
 import { levelForXp, levelProgress } from "./leveling.js";
+import { getActiveEvent } from "./events.js";
 
 // Cap offline processing so nobody returns to millions of years of loot.
 const OFFLINE_CAP_MS = Number(process.env.OFFLINE_CAP_HOURS ?? 24) * 3600 * 1000;
@@ -60,18 +61,20 @@ export interface PlayerState {
   equipped: { rod?: string };
   baitActive: boolean;
   buff: BuffState | null;
+  achievements: string[];
   action: ActionState | null;
   updatedAt: number;
 }
 
 const selectChar = db.prepare<[number]>("SELECT * FROM characters WHERE user_id = ?");
 const upsertChar = db.prepare(`
-  INSERT INTO characters (user_id, name, coins, skills_json, inventory_json, bestiary_json, equipped_json, action_json, bait_active, buff_json, updated_at)
-  VALUES (@user_id, @name, @coins, @skills_json, @inventory_json, @bestiary_json, @equipped_json, @action_json, @bait_active, @buff_json, @updated_at)
+  INSERT INTO characters (user_id, name, coins, skills_json, inventory_json, bestiary_json, equipped_json, action_json, bait_active, buff_json, achievements_json, updated_at)
+  VALUES (@user_id, @name, @coins, @skills_json, @inventory_json, @bestiary_json, @equipped_json, @action_json, @bait_active, @buff_json, @achievements_json, @updated_at)
   ON CONFLICT(user_id) DO UPDATE SET
     coins=@coins, skills_json=@skills_json, inventory_json=@inventory_json,
     bestiary_json=@bestiary_json, equipped_json=@equipped_json,
-    action_json=@action_json, bait_active=@bait_active, buff_json=@buff_json, updated_at=@updated_at
+    action_json=@action_json, bait_active=@bait_active, buff_json=@buff_json,
+    achievements_json=@achievements_json, updated_at=@updated_at
 `);
 
 export function loadPlayer(userId: number): PlayerState | null {
@@ -87,6 +90,7 @@ export function loadPlayer(userId: number): PlayerState | null {
     equipped: JSON.parse(row.equipped_json),
     baitActive: !!row.bait_active,
     buff: row.buff_json ? JSON.parse(row.buff_json) : null,
+    achievements: row.achievements_json ? JSON.parse(row.achievements_json) : [],
     action: row.action_json ? JSON.parse(row.action_json) : null,
     updatedAt: row.updated_at,
   };
@@ -104,6 +108,7 @@ export function savePlayer(p: PlayerState): void {
     action_json: p.action ? JSON.stringify(p.action) : null,
     bait_active: p.baitActive ? 1 : 0,
     buff_json: p.buff ? JSON.stringify(p.buff) : "",
+    achievements_json: JSON.stringify(p.achievements),
     updated_at: p.updatedAt,
   });
 }
@@ -122,6 +127,7 @@ export function createCharacter(userId: number, name: string): PlayerState {
     equipped: {},
     baitActive: false,
     buff: null,
+    achievements: [],
     action: null,
     updatedAt: now,
   };
@@ -162,6 +168,35 @@ function bestBait(p: PlayerState): { id: string; bonus: number } | null {
   return best;
 }
 
+function personalCatchTotal(p: PlayerState): number {
+  let n = 0;
+  for (const r of Object.values(p.bestiary)) n += r.count;
+  return n;
+}
+function hasCaughtRarity(p: PlayerState, rarity: string): boolean {
+  return Object.keys(p.bestiary).some((id) => gameData.items[id]?.rarity === rarity);
+}
+
+// Check every not-yet-unlocked achievement; grant rewards for newly met ones.
+function evaluateAchievements(p: PlayerState, summary: ProgressSummary) {
+  for (const a of gameData.achievements) {
+    if (p.achievements.includes(a.id)) continue;
+    let met = false;
+    switch (a.cond.type) {
+      case "discover": met = Object.keys(p.bestiary).length >= a.cond.value; break;
+      case "catch_total": met = personalCatchTotal(p) >= a.cond.value; break;
+      case "skill": met = levelForXp(p.skills[a.cond.skill] || 0) >= a.cond.value; break;
+      case "rarity": met = hasCaughtRarity(p, a.cond.rarity); break;
+    }
+    if (met) {
+      p.achievements.push(a.id);
+      p.coins += a.coins;
+      summary.coinsGained += a.coins;
+      summary.newAchievements.push({ id: a.id, name: a.name, icon: a.icon, coins: a.coins });
+    }
+  }
+}
+
 // Weighted species pick, with rareBonus shifting toward rarer fish.
 function rollSpecies(zoneId: string, rareBonus: number): string | null {
   const zone = zonesById.get(zoneId);
@@ -194,16 +229,18 @@ export interface ProgressSummary {
   coinsGained: number;
   newSpecies: string[]; // species caught for the very first time
   biggest?: { item: string; size: number };
+  newAchievements: { id: string; name: string; icon: string; coins: number }[];
   stopped?: "no_inputs";
 }
 
 export function processElapsed(p: PlayerState, now: number): ProgressSummary {
-  const summary: ProgressSummary = { completions: 0, xpGained: {}, itemsGained: {}, coinsGained: 0, newSpecies: [] };
+  const summary: ProgressSummary = { completions: 0, xpGained: {}, itemsGained: {}, coinsGained: 0, newSpecies: [], newAchievements: [] };
   const addItemSum = (id: string, q: number) => (summary.itemsGained[id] = (summary.itemsGained[id] || 0) + q);
   const addXpSum = (s: string, x: number) => (summary.xpGained[s] = (summary.xpGained[s] || 0) + x);
 
   if (!p.action) {
     if (p.buff && now >= p.buff.expiresAt) p.buff = null;
+    evaluateAchievements(p, summary);
     p.updatedAt = now;
     return summary;
   }
@@ -223,6 +260,7 @@ export function processElapsed(p: PlayerState, now: number): ProgressSummary {
     const gBonus = guildSpeedBonus();
     const baseCastMs = zone.baseTimeSec * speedMult * (1 - gBonus) * 1000;
 
+    const event = getActiveEvent();
     const end = action.startedAt + capped; // absolute sim end time
     let simTime = action.startedAt; // absolute time as we walk forward
     let guard = 0;
@@ -231,10 +269,12 @@ export function processElapsed(p: PlayerState, now: number): ProgressSummary {
       guard++;
       // Is a meal buff active at this point in (sim) time?
       const buffed = p.buff && simTime < p.buff.expiresAt;
-      const durMs = buffed ? baseCastMs * p.buff!.speedMult : baseCastMs;
+      // Is the live hotspot event active here, and is it this zone?
+      const eventOn = !!event && event.zoneId === zone.id && simTime >= event.startsAt && simTime < event.endsAt;
+      const durMs = baseCastMs * (buffed ? p.buff!.speedMult : 1) * (eventOn ? event!.speedMult : 1);
       if (end - simTime < durMs) break;
       // Choose (and consume) bait for this cast.
-      let rareBonus = rodRare + (buffed ? p.buff!.rareBonus : 0);
+      let rareBonus = rodRare + (buffed ? p.buff!.rareBonus : 0) + (eventOn ? event!.rareBonus : 0);
       if (p.baitActive) {
         const bait = bestBait(p);
         if (bait) {
@@ -275,6 +315,7 @@ export function processElapsed(p: PlayerState, now: number): ProgressSummary {
     const remainder = end - simTime; // partial progress toward the next cast
     action.startedAt = now - remainder;
     if (p.buff && now >= p.buff.expiresAt) p.buff = null;
+    evaluateAchievements(p, summary);
     p.updatedAt = now;
     return summary;
   }
@@ -322,6 +363,7 @@ export function processElapsed(p: PlayerState, now: number): ProgressSummary {
     action.startedAt = now - remainder;
   }
   if (p.buff && now >= p.buff.expiresAt) p.buff = null;
+  evaluateAchievements(p, summary);
   p.updatedAt = now;
   return summary;
 }
@@ -465,6 +507,7 @@ export function serializePlayer(p: PlayerState, now = Date.now()) {
     equipped: p.equipped,
     baitActive: p.baitActive,
     buff,
+    achievements: p.achievements,
     action,
   };
 }

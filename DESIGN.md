@@ -41,6 +41,13 @@ it incremental depth for two players.
 - **Meal buffs**: eating a dish sets a per-player buff `{ speedMult, rareBonus,
   expiresAt }`. The fishing loop walks sim-time forward and checks the buff per
   cast, so it applies exactly (and expires mid-window correctly) even offline.
+- **Hotspot events** (`src/events.ts`): a server-side scheduler rotates a global
+  `FishingEvent` (boosted zone) and broadcasts start/end. The fishing loop reads
+  `getActiveEvent()` and applies its bonus per cast, gated on zone + sim-time —
+  same exact mechanism as buffs.
+- **Achievements**: definitions live in `gameData.achievements`; `processElapsed`
+  evaluates unmet ones each advance and grants coin rewards, surfacing unlocks in
+  the progress summary. Unlocked ids are stored per character.
 - **Persistence** (`src/db.ts`): SQLite. `characters` stores coins, a skills XP
   map, inventory, bestiary, equipped rod, and the current action. Offline
   progress falls out of the action's start timestamp.
@@ -68,10 +75,16 @@ Production is additionally limited by available inputs.
 - [ ] **Action queue** — line up multiple casts/crafts (MWI-style).
 - [ ] **Direct gifting & shared coins** — send items straight to your partner;
       an optional shared coin pool.
-- [ ] **Guild goals & milestones** — combined targets ("catch 100 legendaries")
-      that unlock cosmetic titles or perks for both.
-- [ ] **Fishing events** — timed "the fish are biting at Coral Harbor" windows
-      with boosted rares.
+- [x] **Fishing events** — a rotating global hotspot: one zone gets boosted rare
+      chance + faster casts for a short window, broadcast to both players.
+      Applied per-cast via sim-time (same mechanism as meal buffs).
+- [x] **Achievements** — personal goals (discover N species, catch totals, skill
+      milestones, first rare/epic/legendary) that pay out coins. Guild also has
+      flavour rank titles per level.
+- [x] **Welcome-back summary** — the first sync after reconnecting surfaces the
+      offline catch as a recap modal.
+- [ ] **Guild goals & milestones with shared rewards** — combined targets
+      ("catch 100 legendaries together") granting perks/titles to both.
 
 ### Mid term
 - [ ] **Nets / traps / crab pots** — passive gathering that runs alongside your

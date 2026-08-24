@@ -14,7 +14,9 @@ const state = {
   presence: [],
   guild: null,
   bank: {},
-  tab: "fishing", // skill id, or "collection" / "shop" / "bank"
+  event: null,
+  pendingWelcome: false,
+  tab: "fishing", // skill id, or "collection" / "shop" / "bank" / "achievements"
   ws: null,
   anim: { refId: null, durationSec: 1, cycleStart: 0 },
 };
@@ -78,12 +80,18 @@ function connectWs() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const ws = new WebSocket(`${proto}://${location.host}/ws?token=${encodeURIComponent(state.token)}`);
   state.ws = ws;
+  state.pendingWelcome = true;
   ws.onmessage = (ev) => {
     const msg = JSON.parse(ev.data);
     if (msg.type === "state") {
       state.player = msg.player;
       onStateUpdate(msg.summary);
+      handleSummary(msg.summary);
       if (msg.actionResult && !msg.actionResult.ok) toast(msg.actionResult.error);
+    } else if (msg.type === "event") {
+      state.event = msg.event;
+      renderEventRibbon();
+      if (state.tab === "fishing") renderPanel();
     } else if (msg.type === "presence") {
       state.presence = msg.players;
       state.guild = msg.guild;
@@ -176,7 +184,7 @@ function renderNav() {
   }
   const extra = $("#extra-nav");
   extra.innerHTML = "";
-  for (const [id, icon, label] of [["collection", "📖", "Collection"], ["bank", "🏦", "Shared Bank"], ["shop", "🛒", "Shop"]]) {
+  for (const [id, icon, label] of [["collection", "📖", "Collection"], ["achievements", "🏆", "Achievements"], ["bank", "🏦", "Shared Bank"], ["shop", "🛒", "Shop"]]) {
     const item = el("div", "nav-item" + (state.tab === id ? " active" : ""));
     item.innerHTML = `<span class="nicon">${icon}</span><span>${label}</span>`;
     item.onclick = () => selectTab(id);
@@ -195,6 +203,7 @@ function renderPanel() {
   const panel = $("#panel");
   panel.innerHTML = "";
   if (state.tab === "collection") return renderCollection(panel);
+  if (state.tab === "achievements") return renderAchievements(panel);
   if (state.tab === "shop") return renderShop(panel);
   if (state.tab === "bank") return renderBank(panel);
   if (state.tab === "fishing") return renderFishing(panel);
@@ -247,14 +256,15 @@ function zoneCard(z) {
   const lvl = p.skills.fishing.level;
   const locked = lvl < z.levelReq;
   const active = p.action && p.action.type === "fish" && p.action.refId === z.id;
-  const card = el("div", "card" + (locked ? " locked" : "") + (active ? " active" : ""));
+  const hot = state.event && state.event.zoneId === z.id;
+  const card = el("div", "card" + (locked ? " locked" : "") + (active ? " active" : "") + (hot ? " hotspot" : ""));
   const fishTags = z.fish
     .slice()
     .sort((a, b) => RARITY_ORDER.indexOf(rarityOf(a.item)) - RARITY_ORDER.indexOf(rarityOf(b.item)))
     .map((f) => `<span class="tag-item ${rarityCls(f.item)}">${iconFor(f.item)} ${nameFor(f.item)}</span>`)
     .join("");
   card.innerHTML = `
-    <div class="c-title">${z.icon} ${z.name}</div>
+    <div class="c-title">${z.icon} ${z.name}${hot ? ` <span class="hot-badge">🔥 HOTSPOT</span>` : ""}</div>
     <div class="c-meta">${z.blurb}</div>
     <div class="c-meta">Requires Fishing ${z.levelReq} · ~${z.baseTimeSec}s/cast · ${z.xpMult}× XP</div>
     <div class="c-io">Catches: <div class="zone-fish">${fishTags}</div></div>
@@ -521,6 +531,91 @@ function scrollChat() {
 }
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// ---------------------------------------------------------------- Achievements
+function renderAchievements(panel) {
+  const p = state.player;
+  const unlocked = new Set(p.achievements || []);
+  panel.appendChild(el("div", "panel-head", `<h2>🏆 Achievements</h2><span class="lvl">${unlocked.size}/${state.game.achievements.length}</span>`));
+  panel.appendChild(el("p", "panel-blurb", "Goals to chase while you fish. Each one pays out coins when you earn it."));
+  const grid = el("div", "col-grid");
+  for (const a of state.game.achievements) {
+    const got = unlocked.has(a.id);
+    const item = el("div", "col-item" + (got ? "" : " uncaught"));
+    item.innerHTML = `
+      <div class="ci-top"><span class="ci-icon">${got ? a.icon : "🔒"}</span><span class="ci-name">${a.name}</span></div>
+      <div class="ci-meta">${a.desc}<br/><span style="color:var(--accent-2)">🪙 ${a.coins}</span> ${got ? "· ✅ earned" : ""}</div>
+    `;
+    grid.appendChild(item);
+  }
+  panel.appendChild(grid);
+}
+
+// ---------------------------------------------------------------- Event ribbon
+function renderEventRibbon() {
+  const ribbon = $("#event-ribbon");
+  const e = state.event;
+  if (!e || Date.now() >= e.endsAt) return void ribbon.classList.add("hidden");
+  ribbon.classList.remove("hidden");
+  updateEventRibbon();
+}
+function updateEventRibbon() {
+  const ribbon = $("#event-ribbon");
+  const e = state.event;
+  if (!e) return;
+  const remaining = (e.endsAt - Date.now()) / 1000;
+  if (remaining <= 0) {
+    ribbon.classList.add("hidden");
+    return;
+  }
+  ribbon.innerHTML = `🔥 <b>Hotspot: ${e.icon} ${e.zoneName}</b> — +${Math.round(e.rareBonus * 100)}% rare & faster casts here · <b>${fmtTime(remaining)}</b> left`;
+}
+setInterval(() => {
+  updateEventRibbon();
+  // When an event ends, refresh the fishing panel so the badge clears.
+  if (state.event && Date.now() >= state.event.endsAt) {
+    state.event = null;
+    renderEventRibbon();
+    if (state.tab === "fishing") renderPanel();
+  }
+}, 1000);
+
+// ---------------------------------------------------------------- Summary handling
+function handleSummary(summary) {
+  if (!summary) return;
+  for (const a of summary.newAchievements || []) toast(`🏆 ${a.icon} ${a.name} unlocked! +🪙${a.coins}`);
+  if (state.pendingWelcome) {
+    state.pendingWelcome = false;
+    if (summary.completions > 0) showWelcome(summary);
+  }
+}
+function showWelcome(summary) {
+  const items = Object.entries(summary.itemsGained || {}).sort((a, b) => nameFor(a[0]).localeCompare(nameFor(b[0])));
+  const xp = Object.entries(summary.xpGained || {});
+  const overlay = el("div", "modal-overlay");
+  const itemsHtml = items.length
+    ? items.map(([id, q]) => `<span class="tag-item ${rarityCls(id)}">${iconFor(id)} ${nameFor(id)} ×${q.toLocaleString()}</span>`).join(" ")
+    : "<span class='muted'>nothing this time</span>";
+  const xpHtml = xp.length ? xp.map(([s, v]) => `${skillIcon(s)} +${v.toLocaleString()} xp`).join(" · ") : "—";
+  const newSp = (summary.newSpecies || []).length
+    ? `<div class="wb-row"><b>New species!</b> ${summary.newSpecies.map((id) => `<span class="tag-item ${rarityCls(id)}">${iconFor(id)} ${nameFor(id)}</span>`).join(" ")}</div>`
+    : "";
+  overlay.innerHTML = `
+    <div class="modal">
+      <h2>🎣 While you were away…</h2>
+      <div class="wb-row"><b>${summary.completions.toLocaleString()}</b> things happened.</div>
+      <div class="wb-row">${itemsHtml}</div>
+      ${newSp}
+      <div class="wb-row muted">${xpHtml}${summary.coinsGained ? ` · 🪙 +${summary.coinsGained.toLocaleString()}` : ""}</div>
+      <button class="primary wb-close">Nice!</button>
+    </div>`;
+  overlay.querySelector(".wb-close").onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  document.body.appendChild(overlay);
+}
+function skillIcon(id) {
+  return state.game.skills.find((s) => s.id === id)?.icon || "✨";
 }
 
 // ---------------------------------------------------------------- Toasts

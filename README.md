@@ -7,7 +7,7 @@ rods, and level up a shared **Anglers' Guild** together.
 
 Built for two people (you + your girlfriend), and designed to keep growing.
 
-## What's in it (v0.3)
+## What's in it (v0.4)
 
 - **6 fishing zones** — Backyard Pond → Riverbank → Misty Lake → Coral Harbor →
   Deep Sea → Abyssal Trench, each unlocking with your Fishing level.
@@ -29,8 +29,15 @@ Built for two people (you + your girlfriend), and designed to keep growing.
   of you can grab them, updated live for both of you no matter who's online.
 - **Economy** — sell your catch for coins, buy essentials from the shop.
 - **Shared Anglers' Guild** 🏛️ — every fish *either* of you catches levels up a
-  shared Guild, which makes casts faster for *both* of you. Genuine coop
-  incremental progression.
+  shared Guild (with a fun rank title), which makes casts faster for *both* of
+  you. Genuine coop incremental progression.
+- **Live hotspot events** 🔥 — every few minutes a random zone lights up with
+  boosted rare chance and faster casts for a few minutes, announced to both of
+  you — a shared "let's go fish there!" moment.
+- **Achievements** 🏆 — goals to chase (discover species, hit level milestones,
+  land your first legendary) that pay out coins.
+- **"While you were away" recap** — reconnect after idling to a friendly summary
+  of everything your line caught offline.
 - **Live coop** — a party panel shows what your partner is doing and their
   progress; shared chat.
 - **Accounts** with saved characters (SQLite), playable from anywhere.

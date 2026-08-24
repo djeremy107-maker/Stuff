@@ -24,6 +24,7 @@ import {
   type PlayerState,
 } from "./engine.js";
 import { loadBank, deposit, withdraw } from "./bank.js";
+import { startEvents, getActiveEvent } from "./events.js";
 import { levelForXp } from "./leveling.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -117,6 +118,9 @@ function broadcastBank() {
   broadcast({ type: "bank", items: loadBank() });
 }
 
+// Live hotspot events — rotate a boosted zone and tell everyone.
+startEvents((event) => broadcast({ type: "event", event }));
+
 // ---- Chat ----
 const insertMsg = db.prepare("INSERT INTO messages (user_id, name, text, ts) VALUES (?, ?, ?, ?)");
 const recentMsgs = db.prepare("SELECT * FROM messages ORDER BY id DESC LIMIT 50");
@@ -161,6 +165,7 @@ wss.on("connection", (ws, req) => {
   tickPlayer(userId);
   ws.send(JSON.stringify({ type: "chat_history", messages: recentChat() }));
   ws.send(JSON.stringify({ type: "bank", items: loadBank() }));
+  ws.send(JSON.stringify({ type: "event", event: getActiveEvent() }));
   broadcastPresence();
 
   ws.on("message", (raw) => {

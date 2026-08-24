@@ -206,6 +206,23 @@ input:focus { outline: none; border-color: var(--accent); }
 #guild-box .g-bar > span { display: block; height: 100%; background: var(--accent-2); }
 #guild-box .g-perk { color: var(--accent); font-size: .8rem; margin-top: 8px; }
 
+/* ---------- Event ribbon & hotspot ---------- */
+#event-ribbon {
+  background: linear-gradient(90deg, #3a2a1a, #2a2320);
+  border: 1px solid var(--accent-2); color: var(--accent-2);
+  border-radius: var(--radius); padding: 10px 16px; margin-bottom: 16px; font-size: .9rem;
+}
+.card.hotspot { border-color: var(--accent-2); box-shadow: 0 0 0 1px var(--accent-2); }
+.hot-badge { background: var(--accent-2); color: #241a0d; border-radius: 6px; padding: 1px 6px; font-size: .68rem; font-weight: 700; vertical-align: middle; }
+
+/* ---------- Welcome-back modal ---------- */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 100; padding: 20px; }
+.modal { background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; max-width: 460px; width: 100%; }
+.modal h2 { margin-bottom: 12px; }
+.wb-row { margin-bottom: 12px; line-height: 1.7; }
+.wb-row .muted, .modal .muted { color: var(--muted); }
+.modal .primary { width: 100%; margin-top: 6px; }
+
 /* ---------- Buff chip ---------- */
 .stat.buff { color: var(--accent-2); background: var(--bg-3); border: 1px solid var(--accent-2); border-radius: 8px; padding: 3px 10px; font-size: .82rem; }
 .stat.buff .muted { color: var(--muted); }

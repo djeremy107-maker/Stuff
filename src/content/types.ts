@@ -68,12 +68,27 @@ export interface ShopEntry {
   price: number;
 }
 
+export interface AchievementDef {
+  id: string;
+  name: string;
+  desc: string;
+  icon: string;
+  coins: number; // coin reward on unlock
+  cond:
+    | { type: "discover"; value: number } // species discovered
+    | { type: "catch_total"; value: number } // total fish caught (personal)
+    | { type: "skill"; skill: SkillId; value: number } // reach a skill level
+    | { type: "rarity"; rarity: Rarity }; // catch any fish of this rarity
+}
+
 export interface GameData {
   skills: SkillDef[];
   items: Record<string, ItemDef>;
   zones: ZoneDef[];
   actions: ActionDef[];
   shop: ShopEntry[];
+  achievements: AchievementDef[];
+  guildRanks: string[]; // title per guild level (index = level)
   // XP awarded per catch by rarity (before a zone's xpMult).
   rarityXp: Record<Rarity, number>;
   rarityRank: Record<Rarity, number>;
