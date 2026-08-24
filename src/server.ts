@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 import { db, type CharacterRow, type MessageRow } from "./db.js";
-import { gameData } from "./content/gameData.js";
+import { gameData, zonesById, actionsById } from "./content/gameData.js";
 import { register, login, logout, userIdForToken } from "./auth.js";
 import {
   loadPlayer,
@@ -14,7 +14,13 @@ import {
   serializePlayer,
   startAction,
   stopAction,
-  maxHpForCombat,
+  setBait,
+  equipRod,
+  unequipRod,
+  sellItem,
+  buyItem,
+  guildInfo,
+  type PlayerState,
 } from "./engine.js";
 import { levelForXp } from "./leveling.js";
 
@@ -25,7 +31,6 @@ const app = express();
 app.use(express.json());
 app.use(express.static(join(__dirname, "..", "public")));
 
-// ---- Auth REST ----
 app.post("/api/register", (req, res) => {
   const { username, password } = req.body ?? {};
   const r = register(String(username ?? ""), String(password ?? ""));
@@ -41,18 +46,13 @@ app.post("/api/logout", (req, res) => {
   if (token) logout(token);
   res.json({ ok: true });
 });
-
-// ---- Content ----
 app.get("/api/gamedata", (_req, res) => res.json(gameData));
-
 app.get("/", (_req, res) => res.sendFile(join(__dirname, "..", "public", "index.html")));
 
 const httpServer = createServer(app);
 const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
 
-// userId -> set of sockets
 const connections = new Map<number, Set<WebSocket>>();
-
 function addConn(userId: number, ws: WebSocket) {
   let set = connections.get(userId);
   if (!set) connections.set(userId, (set = new Set()));
@@ -75,39 +75,41 @@ function broadcast(msg: unknown) {
   for (const set of connections.values()) for (const ws of set) if (ws.readyState === WebSocket.OPEN) ws.send(data);
 }
 
-// ---- Presence (all characters, online + offline) ----
+// ---- Presence (all characters, online + offline) + shared Guild ----
 const allChars = db.prepare("SELECT * FROM characters");
+function activityLabel(action: any): string | null {
+  if (!action) return null;
+  if (action.type === "fish") {
+    const z = zonesById.get(action.refId);
+    return z ? `${z.icon} Fishing — ${z.name}` : null;
+  }
+  const a = actionsById.get(action.refId);
+  const skill = a ? gameData.skills.find((s) => s.id === a.skill) : null;
+  return a && skill ? `${skill.icon} ${a.name}` : null;
+}
 function buildPresence() {
   const rows = allChars.all() as CharacterRow[];
-  return rows.map((row) => {
+  const players = rows.map((row) => {
     const skills = JSON.parse(row.skills_json) as Record<string, number>;
+    const bestiary = JSON.parse(row.bestiary_json || "{}") as Record<string, { count: number; max: number }>;
     const totalLevel = gameData.skills.reduce((sum, s) => sum + levelForXp(skills[s.id] || 0), 0);
+    const speciesCaught = Object.keys(bestiary).length;
     const action = row.action_json ? JSON.parse(row.action_json) : null;
-    let activity: string | null = null;
-    if (action) {
-      if (action.type === "combat") {
-        const m = gameData.monsters.find((x) => x.id === action.refId);
-        activity = m ? `${m.icon} Fighting ${m.name}` : null;
-      } else {
-        const a = gameData.actions.find((x) => x.id === action.refId);
-        const skill = a ? gameData.skills.find((s) => s.id === a.skill) : null;
-        activity = a && skill ? `${skill.icon} ${a.name}` : null;
-      }
-    }
     return {
       userId: row.user_id,
       name: row.name,
       online: connections.has(row.user_id),
-      combatLevel: levelForXp(skills.combat || 0),
+      fishingLevel: levelForXp(skills.fishing || 0),
       totalLevel,
-      hp: row.hp,
-      maxHp: maxHpForCombat(skills.combat || 0),
-      activity,
+      speciesCaught,
+      coins: row.coins,
+      activity: activityLabel(action),
     };
   });
+  return { players, guild: guildInfo() };
 }
 function broadcastPresence() {
-  broadcast({ type: "presence", players: buildPresence() });
+  broadcast({ type: "presence", ...buildPresence() });
 }
 
 // ---- Chat ----
@@ -117,7 +119,7 @@ function recentChat(): MessageRow[] {
   return (recentMsgs.all() as MessageRow[]).reverse();
 }
 
-// ---- Tick: advance every online player, push their state ----
+// ---- Tick ----
 function tickPlayer(userId: number) {
   const p = loadPlayer(userId);
   if (!p) return;
@@ -125,13 +127,22 @@ function tickPlayer(userId: number) {
   savePlayer(p);
   sendTo(userId, { type: "state", player: serializePlayer(p), summary });
 }
-
 setInterval(() => {
   for (const userId of connections.keys()) tickPlayer(userId);
   broadcastPresence();
 }, 1000);
 
-// ---- WebSocket handling ----
+// Helper: bank progress, mutate, save, push, refresh presence.
+function withPlayer(userId: number, fn: (p: PlayerState) => any) {
+  const p = loadPlayer(userId);
+  if (!p) return;
+  processElapsed(p, Date.now());
+  const extra = fn(p) ?? {};
+  savePlayer(p);
+  sendTo(userId, { type: "state", player: serializePlayer(p), ...extra });
+  broadcastPresence();
+}
+
 wss.on("connection", (ws, req) => {
   const url = new URL(req.url ?? "", "http://localhost");
   const token = url.searchParams.get("token") ?? undefined;
@@ -142,8 +153,6 @@ wss.on("connection", (ws, req) => {
     return;
   }
   addConn(userId, ws);
-
-  // Initial sync
   tickPlayer(userId);
   ws.send(JSON.stringify({ type: "chat_history", messages: recentChat() }));
   broadcastPresence();
@@ -155,30 +164,38 @@ wss.on("connection", (ws, req) => {
     } catch {
       return;
     }
-    if (msg.type === "action") {
-      const p = loadPlayer(userId);
-      if (!p) return;
-      processElapsed(p, Date.now()); // bank progress on the current action first
-      const r = startAction(p, msg.kind === "combat" ? "combat" : "action", String(msg.refId));
-      savePlayer(p);
-      sendTo(userId, { type: "state", player: serializePlayer(p), actionResult: r });
-      broadcastPresence();
-    } else if (msg.type === "stop") {
-      const p = loadPlayer(userId);
-      if (!p) return;
-      processElapsed(p, Date.now());
-      stopAction(p);
-      savePlayer(p);
-      sendTo(userId, { type: "state", player: serializePlayer(p) });
-      broadcastPresence();
-    } else if (msg.type === "chat") {
-      const text = String(msg.text ?? "").slice(0, 500).trim();
-      if (!text) return;
-      const p = loadPlayer(userId);
-      const name = p?.name ?? "???";
-      const ts = Date.now();
-      insertMsg.run(userId, name, text, ts);
-      broadcast({ type: "chat", message: { user_id: userId, name, text, ts } });
+    switch (msg.type) {
+      case "action":
+        withPlayer(userId, (p) => ({ actionResult: startAction(p, msg.kind === "fish" ? "fish" : "action", String(msg.refId)) }));
+        break;
+      case "stop":
+        withPlayer(userId, (p) => void stopAction(p));
+        break;
+      case "bait":
+        withPlayer(userId, (p) => void setBait(p, !!msg.active));
+        break;
+      case "equip":
+        withPlayer(userId, (p) => ({ actionResult: equipRod(p, String(msg.item)) }));
+        break;
+      case "unequip":
+        withPlayer(userId, (p) => void unequipRod(p));
+        break;
+      case "sell":
+        withPlayer(userId, (p) => ({ actionResult: sellItem(p, String(msg.item), Number(msg.qty ?? 1)) }));
+        break;
+      case "buy":
+        withPlayer(userId, (p) => ({ actionResult: buyItem(p, String(msg.item), Number(msg.qty ?? 1)) }));
+        break;
+      case "chat": {
+        const text = String(msg.text ?? "").slice(0, 500).trim();
+        if (!text) return;
+        const p = loadPlayer(userId);
+        const name = p?.name ?? "???";
+        const ts = Date.now();
+        insertMsg.run(userId, name, text, ts);
+        broadcast({ type: "chat", message: { user_id: userId, name, text, ts } });
+        break;
+      }
     }
   });
 
@@ -189,5 +206,5 @@ wss.on("connection", (ws, req) => {
 });
 
 httpServer.listen(PORT, () => {
-  console.log(`Idle Coop RPG running on http://localhost:${PORT}`);
+  console.log(`Idyll (coop fishing) running on http://localhost:${PORT}`);
 });

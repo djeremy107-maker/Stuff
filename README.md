@@ -1,35 +1,41 @@
-# 🎣 Idyll — a coop idle RPG
+# 🎣 Idyll — a coop fishing game
 
-A cozy, two-player incremental/idle RPG inspired by Milkyway Idle. Queue up a
-skill, walk away, and come back to your loot — your partner can be playing from
-anywhere. Trade skills (fishing, woodcutting, mining, foraging, cooking,
-smithing, crafting) sit alongside combat, and you can see what each other is up
-to in real time and chat while you grind.
+A cozy, two-player idle **fishing** game with shared incremental progression.
+Cast a line, walk away, and come back to a bag full of fish — your partner can be
+fishing from anywhere. Chase rare catches, fill your collection, craft better
+rods, and level up a shared **Anglers' Guild** together.
 
-Built for two people (you + your girlfriend), but it'll grow.
+Built for two people (you + your girlfriend), and designed to keep growing.
 
-## Features so far (v0.1)
+## What's in it (v0.2)
 
-- **8 skills**: Fishing 🎣, Woodcutting 🪓, Mining ⛏️, Foraging 🌿, Cooking 🍳,
-  Smithing 🔨, Crafting 🧵, Combat ⚔️.
-- **True idle progress** — your active action keeps running even when your
-  browser is closed. Log back in and your loot is waiting (capped at 24h by
-  default).
-- **Production chains** — mine ore → smelt bars → forge gear; fish → cook food
-  that heals you in combat.
-- **Combat** with monsters, auto-eating food, HP, loot tables, and coins.
-- **Coop presence** — a live party panel shows what your partner is doing, their
-  levels, and HP.
-- **Shared chat.**
-- **Accounts** with saved characters (SQLite), playable from anywhere over the
-  internet.
+- **6 fishing zones** — Backyard Pond → Riverbank → Misty Lake → Coral Harbor →
+  Deep Sea → Abyssal Trench, each unlocking with your Fishing level.
+- **30+ fish species** across 5 rarities (common → legendary), each with a random
+  **size** — so there's always a personal-best to beat.
+- **A Collection / bestiary** logging every species you've caught and your record
+  size for each.
+- **True idle progress** — your line keeps fishing even with the browser closed.
+  Log back in and your catch is waiting (capped at 24h by default).
+- **Supporting trade skills**: **Foraging** (bait & materials), **Tackle
+  Crafting** (bait, hooks, line, and better **rods**), **Cooking** (turn fish
+  into valuable dishes).
+- **Rods & bait** — craft or buy rods that fish faster and improve your rare
+  chance; toggle bait on to hunt for the good stuff.
+- **Economy** — sell your catch for coins, buy essentials from the shop.
+- **Shared Anglers' Guild** 🏛️ — every fish *either* of you catches levels up a
+  shared Guild, which makes casts faster for *both* of you. Genuine coop
+  incremental progression.
+- **Live coop** — a party panel shows what your partner is doing and their
+  progress; shared chat.
+- **Accounts** with saved characters (SQLite), playable from anywhere.
 
 ## Run it locally
 
 ```bash
 npm install
 npm start
-# open http://localhost:3000  (register two accounts, or open a second browser)
+# open http://localhost:3000  (register two anglers, or use a second browser)
 ```
 
 Dev mode with auto-reload: `npm run dev`.
@@ -45,35 +51,33 @@ Dev mode with auto-reload: `npm run dev`.
 ## Playing across networks
 
 The whole game is one Node server (HTTP + WebSocket + SQLite), so you just need
-to host it somewhere you can both reach. Easiest options:
+to host it somewhere you can both reach:
 
 - **Fly.io** — `fly launch` uses the included `Dockerfile` and `fly.toml`. Add a
   volume so your save persists: `fly volumes create idyll_data --size 1`.
-- **Render / Railway** — point it at this repo, build `npm install`, start
-  `npm start`, and set a persistent disk mounted where `DB_PATH` points.
-- **A little home server / Raspberry Pi** + a tunnel (Tailscale, Cloudflare
-  Tunnel, or port-forwarding). Both of you hit the same URL.
+- **Render / Railway** — build `npm install`, start `npm start`, mount a
+  persistent disk where `DB_PATH` points.
+- **A home server / Raspberry Pi** + a tunnel (Tailscale, Cloudflare Tunnel, or
+  port-forwarding). You both hit the same URL.
 
-Because progress runs server-side, it doesn't matter who is online — the world
-keeps ticking.
+Progress runs server-side, so the world keeps ticking no matter who's online.
 
 ## Project layout
 
 ```
 src/
-  content/        # data-driven game content
-    types.ts      #   content type definitions
-    gameData.ts   #   all skills, items, actions, monsters (edit me to add content!)
+  content/
+    types.ts      # content type definitions
+    gameData.ts   # all fish, zones, rods, bait, recipes, shop (edit me to add content!)
   leveling.ts     # XP curve
-  engine.ts       # offline progress, XP, loot, combat simulation
+  engine.ts       # offline progress, catch rolls, bestiary, guild, economy
   auth.ts         # register / login / sessions
-  db.ts           # SQLite schema
+  db.ts           # SQLite schema (+ shared guild table)
   server.ts       # Express REST + WebSocket + tick loop
 public/           # the browser client (no build step)
-  index.html, style.css, app.js
 ```
 
-Adding content is mostly editing `src/content/gameData.ts` — new fish, trees,
-recipes, and monsters are just data.
+Adding content is mostly editing `src/content/gameData.ts` — new fish, zones,
+rods, bait, and dishes are just data.
 
-See [DESIGN.md](./DESIGN.md) for the roadmap and how the systems fit together.
+See [DESIGN.md](./DESIGN.md) for how it all fits together and the roadmap.

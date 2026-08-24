@@ -21,13 +21,21 @@ db.exec(`
     user_id        INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     name           TEXT NOT NULL,
     coins          INTEGER NOT NULL DEFAULT 0,
-    hp             INTEGER NOT NULL DEFAULT 20,
-    max_hp         INTEGER NOT NULL DEFAULT 20,
     skills_json    TEXT NOT NULL DEFAULT '{}',
     inventory_json TEXT NOT NULL DEFAULT '{}',
+    bestiary_json  TEXT NOT NULL DEFAULT '{}',
+    equipped_json  TEXT NOT NULL DEFAULT '{}',
     action_json    TEXT,
+    bait_active    INTEGER NOT NULL DEFAULT 0,
     updated_at     INTEGER NOT NULL
   );
+
+  -- Shared coop progression: the two of you level up the Guild together.
+  CREATE TABLE IF NOT EXISTS guild (
+    id            INTEGER PRIMARY KEY CHECK (id = 1),
+    total_catches INTEGER NOT NULL DEFAULT 0
+  );
+  INSERT OR IGNORE INTO guild (id, total_catches) VALUES (1, 0);
 
   CREATE TABLE IF NOT EXISTS sessions (
     token      TEXT PRIMARY KEY,
@@ -55,11 +63,12 @@ export interface CharacterRow {
   user_id: number;
   name: string;
   coins: number;
-  hp: number;
-  max_hp: number;
   skills_json: string;
   inventory_json: string;
+  bestiary_json: string;
+  equipped_json: string;
   action_json: string | null;
+  bait_active: number;
   updated_at: number;
 }
 

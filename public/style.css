@@ -159,6 +159,59 @@ input:focus { outline: none; border-color: var(--accent); }
 .msg.system .ctext { color: var(--muted); font-style: italic; }
 #chat-form input { width: 100%; }
 
+/* ---------- Rarity ---------- */
+.r-common { color: #b8c0cc; }
+.r-uncommon { color: #6cc9a0; }
+.r-rare { color: #6c9ce0; }
+.r-epic { color: #b98cf0; }
+.r-legendary { color: #f0b866; }
+.rar-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+.bg-common { background: #b8c0cc; } .bg-uncommon { background: #6cc9a0; }
+.bg-rare { background: #6c9ce0; } .bg-epic { background: #b98cf0; } .bg-legendary { background: #f0b866; }
+
+/* ---------- Fishing controls ---------- */
+.fish-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 16px; margin-bottom: 18px; }
+.fish-controls .ctl { display: flex; align-items: center; gap: 8px; font-size: .9rem; }
+.fish-controls .muted { color: var(--muted); }
+.switch { position: relative; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.switch input { display: none; }
+.switch .track { width: 38px; height: 20px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; position: relative; transition: background .2s; }
+.switch .track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--muted); transition: transform .2s, background .2s; }
+.switch input:checked + .track { background: var(--accent); }
+.switch input:checked + .track::after { transform: translateX(18px); background: #0d1512; }
+
+.zone-fish { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px; }
+
+/* ---------- Collection ---------- */
+.collection-zone { margin-bottom: 22px; }
+.collection-zone h3 { font-size: 1rem; margin-bottom: 10px; color: var(--muted); }
+.col-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.col-item { background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+.col-item.uncaught { opacity: .5; }
+.col-item .ci-top { display: flex; align-items: center; gap: 8px; }
+.col-item .ci-icon { font-size: 1.4rem; }
+.col-item .ci-name { font-weight: 600; font-size: .9rem; }
+.col-item .ci-meta { color: var(--muted); font-size: .78rem; margin-top: 6px; line-height: 1.5; }
+
+/* ---------- Shop ---------- */
+.shop-line { display: flex; align-items: center; gap: 12px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 8px; }
+.shop-line .s-name { font-weight: 600; }
+.shop-line .s-price { color: var(--accent-2); margin-left: auto; }
+.shop-line button { background: var(--accent); border: none; color: #0d1512; font-weight: 600; border-radius: 8px; padding: 7px 14px; }
+
+/* ---------- Guild box ---------- */
+#guild-box .g-level { font-size: 1.4rem; font-weight: 700; }
+#guild-box .g-sub { color: var(--muted); font-size: .8rem; margin: 2px 0 8px; }
+#guild-box .g-bar { height: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+#guild-box .g-bar > span { display: block; height: 100%; background: var(--accent-2); }
+#guild-box .g-perk { color: var(--accent); font-size: .8rem; margin-top: 8px; }
+
+/* ---------- Inventory item actions ---------- */
+.inv-item { position: relative; }
+.inv-item .ii-actions { display: flex; gap: 4px; margin-top: 6px; justify-content: center; }
+.inv-item .ii-actions button { font-size: .7rem; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg-3); color: var(--text); cursor: pointer; }
+.inv-item.equipped { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
 .toast-wrap { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; z-index: 50; }
 .toast { background: var(--bg-3); border: 1px solid var(--accent); color: var(--text); padding: 8px 14px; border-radius: 8px; font-size: .85rem; animation: fade 3s forwards; }
 @keyframes fade { 0%,80% { opacity: 1; } 100% { opacity: 0; } }

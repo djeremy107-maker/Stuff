@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Idyll — Coop Idle RPG</title>
+    <title>Idyll — Coop Fishing</title>
     <link rel="stylesheet" href="/style.css" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎣</text></svg>" />
   </head>
@@ -12,13 +12,13 @@
     <div id="auth" class="auth-screen">
       <div class="auth-card">
         <h1>🎣 Idyll</h1>
-        <p class="tag">A cozy coop idle RPG for two.</p>
+        <p class="tag">A cozy coop fishing game for two.</p>
         <div class="auth-tabs">
           <button id="tab-login" class="active">Log in</button>
           <button id="tab-register">Register</button>
         </div>
         <form id="auth-form">
-          <input id="auth-username" placeholder="Username" autocomplete="username" />
+          <input id="auth-username" placeholder="Angler name" autocomplete="username" />
           <input id="auth-password" type="password" placeholder="Password" autocomplete="current-password" />
           <button id="auth-submit" type="submit">Log in</button>
         </form>
@@ -33,11 +33,7 @@
         <div class="stats">
           <span class="stat" id="stat-name">—</span>
           <span class="stat coins" id="stat-coins">🪙 0</span>
-          <span class="stat hp">
-            <span class="hpbar"><span id="hp-fill" class="hp-fill"></span></span>
-            <span id="hp-text">20/20</span>
-          </span>
-          <span class="stat" id="stat-combat">⚔️ 1</span>
+          <span class="stat" id="stat-rod">🎣 Bare hands</span>
         </div>
         <button id="logout-btn" class="ghost">Log out</button>
       </header>
@@ -46,6 +42,8 @@
         <nav id="sidebar">
           <div class="nav-section-title">Skills</div>
           <div id="skill-nav"></div>
+          <div class="nav-section-title">More</div>
+          <div id="extra-nav"></div>
         </nav>
 
         <main id="content">
@@ -58,6 +56,10 @@
         </main>
 
         <aside id="rail">
+          <section class="guild">
+            <h2>🏛️ Anglers' Guild</h2>
+            <div id="guild-box"></div>
+          </section>
           <section class="party">
             <h2>👥 Party</h2>
             <div id="party-list"></div>

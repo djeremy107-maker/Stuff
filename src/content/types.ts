@@ -1,23 +1,16 @@
-// Shared content type definitions for the game.
-// All game content is data-driven so new skills/items/actions are just data.
+// Shared content type definitions for the fishing game.
+// Content is data-driven: new fish, zones, rods, bait, and recipes are data.
 
-export type SkillId =
-  | "fishing"
-  | "woodcutting"
-  | "mining"
-  | "foraging"
-  | "cooking"
-  | "smithing"
-  | "crafting"
-  | "combat";
+export type SkillId = "fishing" | "cooking" | "crafting" | "foraging";
 
-export type SkillKind = "gathering" | "production" | "combat";
+export type Rarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
+
+export type ItemCategory = "fish" | "material" | "bait" | "rod" | "dish" | "treasure";
 
 export interface SkillDef {
   id: SkillId;
   name: string;
-  kind: SkillKind;
-  icon: string; // emoji, for a lightweight UI
+  icon: string;
   blurb: string;
 }
 
@@ -25,47 +18,58 @@ export interface ItemDef {
   id: string;
   name: string;
   icon: string;
-  // Optional: when eaten during combat, restore this much HP.
-  heals?: number;
-  // Base value in coins (used for the future marketplace / vendor).
-  value?: number;
-  category: "resource" | "food" | "bar" | "equipment" | "misc";
+  category: ItemCategory;
+  value?: number; // vendor sell price in coins
+
+  // Fish-only
+  rarity?: Rarity;
+  sizeMin?: number; // cm
+  sizeMax?: number; // cm
+
+  // Rod-only (equipment)
+  rodSpeedMult?: number; // multiplies fishing time (lower = faster)
+  rodRareBonus?: number; // added to rare-catch bonus
+
+  // Bait-only (consumed per catch while active)
+  baitRareBonus?: number;
 }
 
-// A repeatable action. Gathering & production share the same shape.
-export interface ActionDef {
-  id: string;
-  skill: SkillId;
-  name: string;
-  levelReq: number;
-  // Base seconds per completion (before any speed bonuses).
-  durationSec: number;
-  xp: number;
-  // Items consumed per completion (production skills). Empty for gathering.
-  inputs: { item: string; qty: number }[];
-  // Items produced per completion. Each output may be probabilistic.
-  outputs: { item: string; qty: number; chance?: number }[];
-}
-
-export interface MonsterDef {
+// A fishing spot. Each catch rolls one species from the weighted table.
+export interface ZoneDef {
   id: string;
   name: string;
   icon: string;
-  combatLevelReq: number;
-  // Seconds to defeat one at base (scaled by the player's combat level).
-  killTimeSec: number;
-  hp: number;
-  // Damage the monster deals to the player per kill attempt.
-  damage: number;
+  levelReq: number;
+  baseTimeSec: number; // seconds per cast at base
+  xpMult: number; // multiplies each species' rarity XP
+  blurb: string;
+  fish: { item: string; weight: number }[];
+}
+
+// Cooking / crafting / foraging actions (non-fishing).
+export interface ActionDef {
+  id: string;
+  skill: Exclude<SkillId, "fishing">;
+  name: string;
+  levelReq: number;
+  durationSec: number;
   xp: number;
-  // Loot rolled per kill.
-  loot: { item: string; qty: number; chance: number }[];
-  coins: { min: number; max: number };
+  inputs: { item: string; qty: number }[];
+  outputs: { item: string; qty: number; chance?: number }[];
+}
+
+export interface ShopEntry {
+  item: string;
+  price: number;
 }
 
 export interface GameData {
   skills: SkillDef[];
   items: Record<string, ItemDef>;
+  zones: ZoneDef[];
   actions: ActionDef[];
-  monsters: MonsterDef[];
+  shop: ShopEntry[];
+  // XP awarded per catch by rarity (before a zone's xpMult).
+  rarityXp: Record<Rarity, number>;
+  rarityRank: Record<Rarity, number>;
 }
