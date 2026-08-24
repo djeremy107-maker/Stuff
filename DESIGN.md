@@ -120,6 +120,48 @@ passive Bait Garden and a Trophy Hall), shared purse + gifting, shop expansion.
 Guild shared milestones; then the collection long-tail (shiny variants, weather/
 time exclusives) in place of combat.
 
+### Engagement research (see `docs/RESEARCH_ENGAGEMENT.md`)
+
+Research into idle-game psychology (Melvor, Milky Way Idle, OSRS) and the
+social "flex" layer, with a 5-tier plan. Decision: honest-design guardrails —
+no fake near-misses, no loss-based streaks.
+
+**Tier 1 — Celebration & witness layer (complete):**
+- [x] **Level-up fanfare** — confetti + an on-screen banner on every level-up;
+      escalates at milestone levels (10/20/…/90/99). `MILESTONE_LEVELS` +
+      `highestMilestoneCrossed` in `engine.ts`; `processElapsed` snapshots each
+      skill's level before/after the advance and reports every crossing in
+      `summary.levelUps` (from/to, so a big offline jump is one entry, not a
+      flood).
+- [x] **Notable-catch fanfare** — epic/legendary catches are flagged in
+      `summary.notableCatches` and get a distinct rarity-colored banner
+      (confetti too, for legendaries).
+- [x] **Shared Guild level-up fanfare** — `processElapsed` diffs the Guild
+      level around the `addGuild.run()` call and reports `guildLevelUp` when
+      the catches from *this* advance pushed it over a threshold.
+- [x] **Chat broadcasts** — a `messages.kind` column (`'chat'` | `'system'`)
+      plus `rarity` for tinting. `announceSummary()` in `server.ts` turns
+      level milestones, new species, notable catches, achievements, and Guild
+      level-ups into persisted, broadcast system messages — so an achievement
+      lands for a partner who's offline right now, not just a local toast.
+- [x] **Live vs. offline framing** — the client only fires flashy fanfare
+      during live play; the first sync after reconnecting (which may include
+      a large offline catch-up) folds the same data into one enriched
+      "while you were away" recap instead of firing a flurry of banners.
+
+**Tier 2 — Zone Mastery** (per-zone 1–50 level fed by catches in that zone,
+Melvor's per-action progression layer, fishing-flavored) — not started.
+
+**Tier 3 — Chase content**: shiny 1/500 variants, a records & firsts board
+(shared, stealable), collection-completion rewards, quiet bad-luck protection
+on legendaries — not started.
+
+**Tier 4 — Identity & titles**: equippable titles, cosmetic skill-99 badges,
+total-level frames — not started.
+
+**Tier 5 — Daily rhythm**: folds into Phase 3's Notice Board; gain-only
+streaks — not started.
+
 ### Near term (original list)
 - [x] **Meal buffs** — eat a cooked dish for a timed boost to cast speed and rare
       chance instead of only selling it. Buff is tracked per-player with an

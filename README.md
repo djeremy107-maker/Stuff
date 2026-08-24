@@ -7,7 +7,7 @@ rods, and level up a shared **Anglers' Guild** together.
 
 Built for two people (you + your girlfriend), and designed to keep growing.
 
-## What's in it (v0.7)
+## What's in it (v0.8)
 
 - **6 fishing zones** — Backyard Pond → Riverbank → Misty Lake → Coral Harbor →
   Deep Sea → Abyssal Trench, each unlocking with your Fishing level.
@@ -32,6 +32,12 @@ Built for two people (you + your girlfriend), and designed to keep growing.
   offline time.
 - **Lure slot** — equip a specific bait instead of auto-burning your best one,
   so you can save shiny lures for when they matter.
+- **Celebrations & broadcasts** — level-up fanfare (confetti + a banner,
+  bigger at milestones like 10/25/50/99), a distinct fanfare for epic/legendary
+  catches and shared Guild level-ups, and every notable moment posts to chat
+  so your partner sees it even if they were offline when it happened. Based on
+  research into what makes idle games (Melvor, Milky Way Idle) and OSRS's
+  "number go up" loop so compelling — see `docs/RESEARCH_ENGAGEMENT.md`.
 - **Supporting trade skills**: **Foraging** (bait & materials), **Tackle
   Crafting** (bait, hooks, line, and better **rods**), **Cooking** (turn fish
   into valuable dishes).

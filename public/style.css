@@ -180,7 +180,13 @@ input:focus { outline: none; border-color: var(--accent); }
 #chat-log { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; font-size: .85rem; margin-bottom: 8px; }
 .msg .cname { color: var(--accent); font-weight: 600; margin-right: 5px; }
 .msg .ctext { color: var(--text); }
-.msg.system .ctext { color: var(--muted); font-style: italic; }
+.msg.system { background: var(--bg-3); border-radius: 6px; padding: 4px 8px; }
+.msg.system .cname { color: var(--muted); font-weight: 600; }
+.msg.system .ctext { color: var(--accent-2); font-weight: 600; }
+.msg.system.r-uncommon .ctext { color: #6cc9a0; }
+.msg.system.r-rare .ctext { color: #6c9ce0; }
+.msg.system.r-epic .ctext { color: #b98cf0; }
+.msg.system.r-legendary .ctext { color: #f0b866; }
 #chat-form input { width: 100%; }
 
 /* ---------- Rarity ---------- */
@@ -260,6 +266,32 @@ input:focus { outline: none; border-color: var(--accent); }
 .inv-item .ii-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; justify-content: center; }
 .inv-item .ii-actions button { flex: 0 0 auto; font-size: .7rem; padding: 2px 7px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg-3); color: var(--text); cursor: pointer; white-space: nowrap; }
 .inv-item.equipped { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+/* ---------- Fanfare banners (level-ups, notable catches, guild) ---------- */
+.fanfare {
+  position: fixed; top: 14%; left: 50%;
+  transform: translate(-50%, -20px) scale(.9); opacity: 0;
+  background: var(--bg-2); border: 2px solid var(--accent-2); border-radius: 16px;
+  padding: 18px 32px; text-align: center; font-size: 1.3rem; font-weight: 700;
+  color: var(--accent-2); box-shadow: 0 12px 40px rgba(0,0,0,.5);
+  z-index: 80; transition: opacity .35s ease, transform .35s ease; pointer-events: none;
+}
+.fanfare.show { opacity: 1; transform: translate(-50%, 0) scale(1); }
+.fanfare .ff-sub { display: block; font-size: .85rem; font-weight: 500; color: var(--muted); margin-top: 6px; }
+.fanfare.milestone { border-color: var(--accent); color: var(--accent); }
+.fanfare.guild { border-color: var(--xp); color: var(--xp); }
+.fanfare.r-epic { border-color: #b98cf0; color: #b98cf0; }
+.fanfare.r-legendary { border-color: #f0b866; color: #f0b866; box-shadow: 0 12px 50px rgba(240,184,102,.35); }
+
+/* ---------- Confetti ---------- */
+.confetti-wrap { position: fixed; inset: 0; pointer-events: none; z-index: 79; overflow: hidden; }
+.confetti-piece {
+  position: absolute; top: -20px; width: 8px; height: 14px; opacity: .9;
+  animation: confetti-fall linear forwards;
+}
+@keyframes confetti-fall {
+  to { top: 100vh; opacity: 0; }
+}
 
 .toast-wrap { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; z-index: 50; }
 .toast { background: var(--bg-3); border: 1px solid var(--accent); color: var(--text); padding: 8px 14px; border-radius: 8px; font-size: .85rem; animation: fade 3s forwards; }

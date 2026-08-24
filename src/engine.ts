@@ -317,6 +317,14 @@ function rollSpecies(zoneId: string, rareBonus: number): string | null {
 // --------------------------------------------------------------------------
 // Core: advance state to `now`
 // --------------------------------------------------------------------------
+// Levels worth a broadcast/celebration, not just a quiet number tick.
+export const MILESTONE_LEVELS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 99];
+export function highestMilestoneCrossed(from: number, to: number): number | null {
+  let hit: number | null = null;
+  for (const m of MILESTONE_LEVELS) if (m > from && m <= to) hit = m;
+  return hit;
+}
+
 export interface ProgressSummary {
   completions: number;
   bonus: number; // extra completions from efficiency procs
@@ -326,6 +334,9 @@ export interface ProgressSummary {
   newSpecies: string[]; // species caught for the very first time
   biggest?: { item: string; size: number };
   newAchievements: { id: string; name: string; icon: string; coins: number }[];
+  levelUps: { skill: string; from: number; to: number }[];
+  notableCatches: { item: string; rarity: string; size: number }[]; // epic/legendary
+  guildLevelUp: { from: number; to: number } | null;
   stopped?: "no_inputs";
 }
 
@@ -390,9 +401,16 @@ function promoteNext(p: PlayerState): boolean {
 }
 
 export function processElapsed(p: PlayerState, now: number): ProgressSummary {
-  const summary: ProgressSummary = { completions: 0, bonus: 0, xpGained: {}, itemsGained: {}, coinsGained: 0, newSpecies: [], newAchievements: [] };
+  const summary: ProgressSummary = {
+    completions: 0, bonus: 0, xpGained: {}, itemsGained: {}, coinsGained: 0,
+    newSpecies: [], newAchievements: [], levelUps: [], notableCatches: [], guildLevelUp: null,
+  };
   const addItemSum = (id: string, q: number) => (summary.itemsGained[id] = (summary.itemsGained[id] || 0) + q);
   const addXpSum = (s: string, x: number) => (summary.xpGained[s] = (summary.xpGained[s] || 0) + x);
+
+  // Snapshot skill levels so we can report every level crossed by this advance.
+  const levelsBefore: Record<string, number> = {};
+  for (const s of gameData.skills) levelsBefore[s.id] = skillLevel(p, s.id);
 
   let guildCatches = 0;
 
@@ -411,6 +429,9 @@ export function processElapsed(p: PlayerState, now: number): ProgressSummary {
     else { rec.count++; if (size > rec.max) rec.max = size; }
     if (size > 0 && (!summary.biggest || size > summary.biggest.size)) summary.biggest = { item: species, size };
     const rarity = def?.rarity ?? "common";
+    if (def?.category === "fish" && (rarity === "epic" || rarity === "legendary")) {
+      summary.notableCatches.push({ item: species, rarity, size });
+    }
     const xp = Math.round(gameData.rarityXp[rarity] * zone.xpMult * xpMult);
     grantXp(p, "fishing", xp);
     addXpSum("fishing", xp);
@@ -504,7 +525,18 @@ export function processElapsed(p: PlayerState, now: number): ProgressSummary {
   // Keep provisions ticking even while idle (no active action).
   refillBuffs(p, now);
 
-  if (guildCatches > 0) addGuild.run(guildCatches);
+  if (guildCatches > 0) {
+    const before = guildLevel();
+    addGuild.run(guildCatches);
+    const after = guildLevel();
+    if (after > before) summary.guildLevelUp = { from: before, to: after };
+  }
+
+  for (const s of gameData.skills) {
+    const to = skillLevel(p, s.id);
+    if (to > levelsBefore[s.id]) summary.levelUps.push({ skill: s.id, from: levelsBefore[s.id], to });
+  }
+
   evaluateAchievements(p, summary);
   p.updatedAt = now;
   return summary;

@@ -70,6 +70,8 @@ db.exec(`
     ts      INTEGER NOT NULL
   );
 `);
+ensureColumn("messages", "kind", "kind TEXT NOT NULL DEFAULT 'chat'");
+ensureColumn("messages", "rarity", "rarity TEXT");
 
 export interface UserRow {
   id: number;
@@ -100,4 +102,6 @@ export interface MessageRow {
   name: string;
   text: string;
   ts: number;
+  kind: string; // 'chat' | 'system'
+  rarity: string | null; // for rarity-tinted system messages (notable catches)
 }

@@ -25,7 +25,9 @@ import {
   sellItem,
   buyItem,
   guildInfo,
+  highestMilestoneCrossed,
   type PlayerState,
+  type ProgressSummary,
 } from "./engine.js";
 import { loadBank, deposit, withdraw } from "./bank.js";
 import { startEvents, getActiveEvent } from "./events.js";
@@ -126,10 +128,49 @@ function broadcastBank() {
 startEvents((event) => broadcast({ type: "event", event }));
 
 // ---- Chat ----
-const insertMsg = db.prepare("INSERT INTO messages (user_id, name, text, ts) VALUES (?, ?, ?, ?)");
+const insertMsg = db.prepare("INSERT INTO messages (user_id, name, text, ts, kind, rarity) VALUES (?, ?, ?, ?, ?, ?)");
 const recentMsgs = db.prepare("SELECT * FROM messages ORDER BY id DESC LIMIT 50");
 function recentChat(): MessageRow[] {
   return (recentMsgs.all() as MessageRow[]).reverse();
+}
+// A system broadcast: persisted to chat history and pushed live to everyone,
+// so an achievement lands even for a partner who's offline right now.
+function systemMsg(userId: number, text: string, rarity: string | null = null) {
+  const ts = Date.now();
+  insertMsg.run(userId, "📢 System", text, ts, "system", rarity);
+  broadcast({ type: "chat", message: { user_id: userId, name: "📢 System", text, ts, kind: "system", rarity } });
+}
+
+// Turn a progress summary into celebratory, witnessed chat broadcasts —
+// level milestones, discoveries, notable catches, achievements, and shared
+// Guild level-ups. This runs on every tick (live or offline catch-up) so
+// nothing worth celebrating happens silently.
+function announceSummary(p: PlayerState, summary: ProgressSummary) {
+  for (const lv of summary.levelUps) {
+    const milestone = highestMilestoneCrossed(lv.from, lv.to);
+    if (milestone == null) continue;
+    const skill = gameData.skills.find((s) => s.id === lv.skill);
+    const label = skill ? `${skill.icon} ${skill.name}` : lv.skill;
+    const max = milestone === 99 ? " — max level! 🏆" : "";
+    systemMsg(p.userId, `${p.name} reached ${label} level ${milestone}!${max}`);
+  }
+  for (const speciesId of summary.newSpecies) {
+    const def = gameData.items[speciesId];
+    if (!def || def.rarity === "epic" || def.rarity === "legendary") continue; // those get the louder message below
+    systemMsg(p.userId, `${p.name} discovered a new species — ${def.icon} ${def.name}!`, def.rarity ?? null);
+  }
+  for (const c of summary.notableCatches) {
+    const def = gameData.items[c.item];
+    const label = def ? `${def.icon} ${def.name}` : c.item;
+    const tag = c.rarity === "legendary" ? "🌟 LEGENDARY catch" : "✨ Epic catch";
+    systemMsg(p.userId, `${p.name} landed a ${tag} — ${label} (${c.size}cm)!`, c.rarity);
+  }
+  for (const a of summary.newAchievements) {
+    systemMsg(p.userId, `${p.name} unlocked an achievement — ${a.icon} ${a.name}!`);
+  }
+  if (summary.guildLevelUp) {
+    systemMsg(p.userId, `🏛️ The Anglers' Guild reached Level ${summary.guildLevelUp.to}!`);
+  }
 }
 
 // ---- Tick ----
@@ -138,6 +179,7 @@ function tickPlayer(userId: number) {
   if (!p) return;
   const summary = processElapsed(p, Date.now());
   savePlayer(p);
+  announceSummary(p, summary);
   sendTo(userId, { type: "state", player: serializePlayer(p), summary });
 }
 setInterval(() => {
@@ -149,9 +191,10 @@ setInterval(() => {
 function withPlayer(userId: number, fn: (p: PlayerState) => any) {
   const p = loadPlayer(userId);
   if (!p) return;
-  processElapsed(p, Date.now());
+  const summary = processElapsed(p, Date.now());
   const extra = fn(p) ?? {};
   savePlayer(p);
+  announceSummary(p, summary);
   sendTo(userId, { type: "state", player: serializePlayer(p), ...extra });
   broadcastPresence();
 }
@@ -230,8 +273,8 @@ wss.on("connection", (ws, req) => {
         const p = loadPlayer(userId);
         const name = p?.name ?? "???";
         const ts = Date.now();
-        insertMsg.run(userId, name, text, ts);
-        broadcast({ type: "chat", message: { user_id: userId, name, text, ts } });
+        insertMsg.run(userId, name, text, ts, "chat", null);
+        broadcast({ type: "chat", message: { user_id: userId, name, text, ts, kind: "chat", rarity: null } });
         break;
       }
     }

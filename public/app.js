@@ -610,7 +610,9 @@ $("#chat-form").onsubmit = (e) => {
   input.value = "";
 };
 function addChatMsg(m) {
-  const row = el("div", "msg");
+  const isSystem = m.kind === "system";
+  const rarityTint = isSystem && m.rarity ? ` r-${m.rarity}` : "";
+  const row = el("div", "msg" + (isSystem ? " system" + rarityTint : ""));
   row.innerHTML = `<span class="cname">${escapeHtml(m.name)}</span><span class="ctext">${escapeHtml(m.text)}</span>`;
   $("#chat-log").appendChild(row);
 }
@@ -671,14 +673,30 @@ setInterval(() => {
 }, 1000);
 
 // ---------------------------------------------------------------- Summary handling
+const MILESTONE_LEVELS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 99];
+function highestMilestone(from, to) {
+  let hit = null;
+  for (const m of MILESTONE_LEVELS) if (m > from && m <= to) hit = m;
+  return hit;
+}
+
 function handleSummary(summary) {
   if (!summary) return;
-  for (const a of summary.newAchievements || []) toast(`🏆 ${a.icon} ${a.name} unlocked! +🪙${a.coins}`);
+  const hasNews = summary.completions > 0 || (summary.levelUps || []).length || (summary.notableCatches || []).length || summary.guildLevelUp;
   if (state.pendingWelcome) {
+    // First sync after connecting (may include a long offline catch-up) — fold
+    // everything into one recap instead of firing a flurry of live celebrations.
     state.pendingWelcome = false;
-    if (summary.completions > 0) showWelcome(summary);
+    if (hasNews) showWelcome(summary);
+    return;
   }
+  // Live: celebrate each moment as it happens.
+  for (const lv of summary.levelUps || []) celebrateLevelUp(lv);
+  for (const c of summary.notableCatches || []) celebrateCatch(c);
+  if (summary.guildLevelUp) celebrateGuildLevelUp(summary.guildLevelUp);
+  for (const a of summary.newAchievements || []) toast(`🏆 ${a.icon} ${a.name} unlocked! +🪙${a.coins}`);
 }
+
 function showWelcome(summary) {
   const items = Object.entries(summary.itemsGained || {}).sort((a, b) => nameFor(a[0]).localeCompare(nameFor(b[0])));
   const xp = Object.entries(summary.xpGained || {});
@@ -690,12 +708,29 @@ function showWelcome(summary) {
   const newSp = (summary.newSpecies || []).length
     ? `<div class="wb-row"><b>New species!</b> ${summary.newSpecies.map((id) => `<span class="tag-item ${rarityCls(id)}">${iconFor(id)} ${nameFor(id)}</span>`).join(" ")}</div>`
     : "";
+  const levelUps = (summary.levelUps || [])
+    .map((lv) => {
+      const m = highestMilestone(lv.from, lv.to);
+      return `<span class="tag-item${m ? " r-legendary" : ""}">${skillIcon(lv.skill)} ${lv.skill} ${lv.from}→<b>${lv.to}</b>${m ? " 🎉" : ""}</span>`;
+    })
+    .join(" ");
+  const levelHtml = levelUps ? `<div class="wb-row"><b>Level ups!</b> ${levelUps}</div>` : "";
+  const notable = (summary.notableCatches || [])
+    .map((c) => `<span class="tag-item r-${c.rarity}">${iconFor(c.item)} ${nameFor(c.item)} (${c.size}cm)</span>`)
+    .join(" ");
+  const notableHtml = notable ? `<div class="wb-row"><b>✨ Notable catches!</b> ${notable}</div>` : "";
+  const guildHtml = summary.guildLevelUp
+    ? `<div class="wb-row">🏛️ <b>Anglers' Guild reached Level ${summary.guildLevelUp.to}!</b></div>`
+    : "";
   overlay.innerHTML = `
     <div class="modal">
       <h2>🎣 While you were away…</h2>
       <div class="wb-row"><b>${summary.completions.toLocaleString()}</b> things happened${summary.bonus > 0 ? ` <span class="muted">(incl. ${summary.bonus.toLocaleString()} bonus from ⚡ efficiency)</span>` : ""}.</div>
       <div class="wb-row">${itemsHtml}</div>
       ${newSp}
+      ${notableHtml}
+      ${levelHtml}
+      ${guildHtml}
       <div class="wb-row muted">${xpHtml}${summary.coinsGained ? ` · 🪙 +${summary.coinsGained.toLocaleString()}` : ""}</div>
       <button class="primary wb-close">Nice!</button>
     </div>`;
@@ -705,6 +740,60 @@ function showWelcome(summary) {
 }
 function skillIcon(id) {
   return state.game.skills.find((s) => s.id === id)?.icon || "✨";
+}
+function skillName(id) {
+  return state.game.skills.find((s) => s.id === id)?.name || id;
+}
+
+// ---------------------------------------------------------------- Celebrations
+function celebrateLevelUp(lv) {
+  const milestone = highestMilestone(lv.from, lv.to);
+  const label = `${skillIcon(lv.skill)} ${skillName(lv.skill)} — Level ${lv.to}!`;
+  if (milestone) {
+    burstConfetti();
+    showFanfare(`🎉 ${label}${lv.to === 99 ? " Max level!" : ""}`, "milestone", 4200);
+  } else {
+    toast(`⬆️ ${label}`);
+  }
+}
+function celebrateCatch(c) {
+  const legendary = c.rarity === "legendary";
+  if (legendary) burstConfetti();
+  const tag = legendary ? "🌟 LEGENDARY CATCH" : "✨ Epic catch";
+  showFanfare(`${tag}<br><span class="ff-sub">${iconFor(c.item)} ${nameFor(c.item)} — ${c.size}cm</span>`, `r-${c.rarity}`, legendary ? 4500 : 3200);
+}
+function celebrateGuildLevelUp(g) {
+  showFanfare(`🏛️ Anglers' Guild — Level ${g.to}!<br><span class="ff-sub">Faster casts for both of you</span>`, "guild", 4000);
+}
+
+function showFanfare(html, cls, durationMs) {
+  const el2 = el("div", `fanfare ${cls}`, html);
+  document.body.appendChild(el2);
+  requestAnimationFrame(() => el2.classList.add("show"));
+  setTimeout(() => {
+    el2.classList.remove("show");
+    setTimeout(() => el2.remove(), 400);
+  }, durationMs);
+}
+
+function burstConfetti() {
+  const colors = ["#6cc9a0", "#f0b866", "#6c9ce0", "#b98cf0", "#e7e9ef"];
+  const wrap = el("div", "confetti-wrap");
+  for (let i = 0; i < 36; i++) {
+    const piece = el("div", "confetti-piece");
+    const x = 50 + (Math.random() - 0.5) * 70;
+    const rot = Math.random() * 360;
+    const delay = Math.random() * 0.2;
+    const dur = 1.4 + Math.random() * 0.8;
+    piece.style.left = `${x}vw`;
+    piece.style.background = colors[i % colors.length];
+    piece.style.animationDelay = `${delay}s`;
+    piece.style.animationDuration = `${dur}s`;
+    piece.style.transform = `rotate(${rot}deg)`;
+    wrap.appendChild(piece);
+  }
+  document.body.appendChild(wrap);
+  setTimeout(() => wrap.remove(), 2600);
 }
 
 // ---------------------------------------------------------------- Toasts
