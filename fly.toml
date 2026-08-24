@@ -1,0 +1,28 @@
+# Fly.io config for Idyll. Run `fly launch` (it'll reuse this), then:
+#   fly volumes create idyll_data --size 1 --region <your-region>
+#   fly deploy
+# Your save lives on the volume mounted at /data.
+app = "idyll-coop-rpg"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "3000"
+  DB_PATH = "/data/game.sqlite"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+[mounts]
+  source = "idyll_data"
+  destination = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

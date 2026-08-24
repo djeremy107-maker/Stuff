@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Idyll — Coop Idle RPG</title>
+    <link rel="stylesheet" href="/style.css" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎣</text></svg>" />
+  </head>
+  <body>
+    <!-- Login / register -->
+    <div id="auth" class="auth-screen">
+      <div class="auth-card">
+        <h1>🎣 Idyll</h1>
+        <p class="tag">A cozy coop idle RPG for two.</p>
+        <div class="auth-tabs">
+          <button id="tab-login" class="active">Log in</button>
+          <button id="tab-register">Register</button>
+        </div>
+        <form id="auth-form">
+          <input id="auth-username" placeholder="Username" autocomplete="username" />
+          <input id="auth-password" type="password" placeholder="Password" autocomplete="current-password" />
+          <button id="auth-submit" type="submit">Log in</button>
+        </form>
+        <p id="auth-error" class="error"></p>
+      </div>
+    </div>
+
+    <!-- Game -->
+    <div id="game" class="hidden">
+      <header id="topbar">
+        <div class="brand">🎣 Idyll</div>
+        <div class="stats">
+          <span class="stat" id="stat-name">—</span>
+          <span class="stat coins" id="stat-coins">🪙 0</span>
+          <span class="stat hp">
+            <span class="hpbar"><span id="hp-fill" class="hp-fill"></span></span>
+            <span id="hp-text">20/20</span>
+          </span>
+          <span class="stat" id="stat-combat">⚔️ 1</span>
+        </div>
+        <button id="logout-btn" class="ghost">Log out</button>
+      </header>
+
+      <div id="layout">
+        <nav id="sidebar">
+          <div class="nav-section-title">Skills</div>
+          <div id="skill-nav"></div>
+        </nav>
+
+        <main id="content">
+          <div id="action-banner" class="hidden"></div>
+          <div id="panel"></div>
+          <section id="inventory">
+            <h2>🎒 Inventory</h2>
+            <div id="inventory-grid" class="inv-grid"></div>
+          </section>
+        </main>
+
+        <aside id="rail">
+          <section class="party">
+            <h2>👥 Party</h2>
+            <div id="party-list"></div>
+          </section>
+          <section class="chat">
+            <h2>💬 Chat</h2>
+            <div id="chat-log"></div>
+            <form id="chat-form">
+              <input id="chat-input" placeholder="Say something…" maxlength="500" />
+            </form>
+          </section>
+        </aside>
+      </div>
+    </div>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
