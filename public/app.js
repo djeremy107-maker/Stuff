@@ -457,16 +457,36 @@ function selectTab(tab) {
 function renderPanel() {
   if (!state.player) return;
   const panel = $("#panel");
+
+  // renderPanel() rebuilds the whole subtree from scratch, and it runs on
+  // every "state" push from the server (roughly once a second, not just on
+  // tab switches) — so without this, any input the player is mid-typing-into
+  // (e.g. the purse contribution amount) gets wiped and loses focus every
+  // tick. Capture it here and restore it after the rebuild.
+  const active = document.activeElement;
+  const focused = active && panel.contains(active) && (active.tagName === "INPUT" || active.tagName === "TEXTAREA") && active.id
+    ? { id: active.id, value: active.value, selStart: active.selectionStart, selEnd: active.selectionEnd }
+    : null;
+
   panel.innerHTML = "";
-  if (state.tab === "collection") return renderCollection(panel);
-  if (state.tab === "achievements") return renderAchievements(panel);
-  if (state.tab === "prestige") return renderPrestige(panel);
-  if (state.tab === "shop") return renderShop(panel);
-  if (state.tab === "bank") return renderBank(panel);
-  if (state.tab === "boathouse") return renderBoathouse(panel);
-  if (state.tab === "notice_board") return renderNoticeBoard(panel);
-  if (state.tab === "fishing") return renderFishing(panel);
-  return renderSkill(panel, state.tab);
+  if (state.tab === "collection") renderCollection(panel);
+  else if (state.tab === "achievements") renderAchievements(panel);
+  else if (state.tab === "prestige") renderPrestige(panel);
+  else if (state.tab === "shop") renderShop(panel);
+  else if (state.tab === "bank") renderBank(panel);
+  else if (state.tab === "boathouse") renderBoathouse(panel);
+  else if (state.tab === "notice_board") renderNoticeBoard(panel);
+  else if (state.tab === "fishing") renderFishing(panel);
+  else renderSkill(panel, state.tab);
+
+  if (focused) {
+    const restored = document.getElementById(focused.id);
+    if (restored && (restored.tagName === "INPUT" || restored.tagName === "TEXTAREA")) {
+      restored.value = focused.value;
+      restored.focus();
+      try { restored.setSelectionRange(focused.selStart, focused.selEnd); } catch {}
+    }
+  }
 }
 
 function skillHeader(panel, skill) {
